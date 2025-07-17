@@ -1,0 +1,21 @@
+{
+  "name": "cupon-bot",
+  "version": "1.0.0",
+  "description": "Bot para detectar y subir cupones automáticamente a SimplyCodes",
+  "main": "test-simplycodes-win.js",
+  "bin": "test-simplycodes-win.js",
+  "scripts": {
+    "start": "node test-simplycodes-win.js",
+    "dev": "node --watch test-simplycodes-win.js",
+    "build": "pkg . --targets node18-win-x64 --output cupon-bot-win.exe"
+  },
+  "dependencies": {
+    "blessed": "^0.1.81",
+    "chalk": "^5.0.0",
+    "dotenv": "^16.0.0",
+    "inquirer": "^9.0.0",
+    "node-cron": "^3.0.0",
+    "puppeteer": "^21.0.0"
+  },
+  "type": "module"
+}
