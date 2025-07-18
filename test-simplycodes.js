@@ -47,17 +47,39 @@ class SimplyCodesTester {
     }
   }
 
+  getChromeCommand() {
+    if (process.env.CHROME_PATH) {
+      return process.env.CHROME_PATH;
+    }
+    if (process.platform === 'darwin') {
+      // Usar 'open' para macOS
+      return 'open -a "Google Chrome" --args';
+    } else if (process.platform === 'linux') {
+      return 'google-chrome';
+    } else {
+      throw new Error('Unsupported OS for Chrome automation');
+    }
+  }
+
   async startChromeWithDebugging() {
     try {
       log.info('|    Chrome Debug Mode Starting...    |');
-      
       // Cerrar Chrome existente
-      await execAsync('pkill -f "Google Chrome"');
+      if (process.platform === 'darwin') {
+        await execAsync('pkill -f "Google Chrome"');
+      } else if (process.platform === 'linux') {
+        await execAsync('pkill -f "chrome"');
+      }
       await this.wait(2000);
-      
       // Iniciar Chrome con debugging
-      exec('/Applications/Google\\ Chrome.app/Contents/MacOS/Google\\ Chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug &');
-      
+      const chromeCmd = this.getChromeCommand();
+      let launchCmd;
+      if (process.platform === 'darwin') {
+        launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu`;
+      } else {
+        launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu &`;
+      }
+      exec(launchCmd);
       // Esperar a que Chrome se inicie
       return await this.waitForDebugPort();
     } catch (error) {
