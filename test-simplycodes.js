@@ -143,19 +143,19 @@ class SimplyCodesTester {
   }
 
   async ensureChromeRunning() {
-    const isRunning = await this.checkChromeRunning();
     const debugPortAvailable = await this.checkDebugPort();
-    
-    if (!isRunning) {
-      log.info('Chrome is not running');
-      return await this.startChromeWithDebugging();
-    } else if (!debugPortAvailable) {
-      log.info('Chrome is running but debug port not available');
-      return await this.startChromeWithDebugging();
-    } else {
+    if (debugPortAvailable) {
       log.success('Chrome is already running in debug mode');
       return true;
     }
+    // Solo si el puerto no está disponible, intenta cerrar y relanzar Chrome
+    const isRunning = await this.checkChromeRunning();
+    if (isRunning) {
+      log.info('Chrome is running but debug port not available');
+    } else {
+      log.info('Chrome is not running');
+    }
+    return await this.startChromeWithDebugging();
   }
 
   // ===== MÉTODOS DE SIMPLYCODES =====
