@@ -156,6 +156,7 @@ screen.append(bottomBar);
 let child = null;
 let running = false;
 let logCleanupInterval = null;
+let lastError = '';
 
 // Función para limpiar secuencias ANSI
 function limpiarAnsi(str) {
@@ -204,20 +205,38 @@ function iniciarBot(cupon, porcentaje) {
   bloquearFormulario(true);
   logBox.log('----------------------------------------');
   logBox.log('Iniciando bot real...');
+  lastError = '';
   // Ejecutar el bot como proceso hijo usando spawn y desactivar colores
   child = spawn('node', [path.resolve(__dirname, 'test-simplycodes.js')], {
     env: { ...process.env, COUPON: cupon, PERCENTAGE: porcentaje, FORCE_COLOR: 0 }
   });
   child.stdout.on('data', (data) => {
-    logBox.log(limpiarAnsi(data.toString().replace(/\n$/, '')));
+    const msg = limpiarAnsi(data.toString().replace(/\n$/, ''));
+    logBox.log(msg);
     screen.render();
   });
   child.stderr.on('data', (data) => {
-    logBox.log('[ERROR] ' + limpiarAnsi(data.toString().replace(/\n$/, '')));
+    const errMsg = limpiarAnsi(data.toString().replace(/\n$/, ''));
+    lastError = errMsg;
+    logBox.log('[ERROR] ' + errMsg);
     screen.render();
   });
   child.on('exit', (code) => {
-    logBox.log('Bot finalizado. Código de salida: ' + code);
+    if (code !== 0) {
+      logBox.log('Bot finalizado con error. Código de salida: ' + code);
+      if (lastError.includes('Chrome') || lastError.includes('debug')) {
+        logBox.log('--- Sugerencias para solucionar el error de Chrome ---');
+        logBox.log('1. Verifica que Google Chrome o Chromium esté instalado.');
+        logBox.log('2. Prueba lanzar manualmente:');
+        logBox.log('   /usr/bin/google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu');
+        logBox.log('3. Si usas una ruta personalizada, lanza el TUI así:');
+        logBox.log('   CHROME_PATH=/ruta/a/chrome node tui-simplycodes.js');
+        logBox.log('4. Verifica el puerto con: curl http://localhost:9222/json/version');
+        logBox.log('5. Si usas Chromium, prueba: CHROME_PATH=chromium node tui-simplycodes.js');
+      }
+    } else {
+      logBox.log('Bot finalizado. Código de salida: ' + code);
+    }
     running = false;
     bloquearFormulario(false);
     screen.render();
