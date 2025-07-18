@@ -3,8 +3,7 @@ import blessed from 'blessed';
 import { fork } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawn } from 'child_process';
-const { execSync } = require('child_process');
+import { spawn, execSync } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
