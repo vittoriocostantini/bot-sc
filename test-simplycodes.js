@@ -4,6 +4,7 @@ import inquirer from 'inquirer';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { resolve } from 'path';
+import { spawn } from 'child_process';
 
 const execAsync = promisify(exec);
 
@@ -70,16 +71,26 @@ class SimplyCodesTester {
       } else if (process.platform === 'linux') {
         await execAsync('pkill -f "chrome"');
       }
-      await this.wait(2000);
+      await this.wait(4000); // Espera más tiempo tras cerrar Chrome
       // Iniciar Chrome con debugging
       const chromeCmd = this.getChromeCommand();
       let launchCmd;
       if (process.platform === 'darwin') {
         launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu`;
+        exec(launchCmd);
       } else {
-        launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu &`;
+        // Usar spawn para lanzar Chrome en Linux
+        this.chromeProcess = spawn(chromeCmd, [
+          '--remote-debugging-port=9222',
+          '--user-data-dir=/tmp/chrome-debug',
+          '--no-sandbox',
+          '--disable-gpu'
+        ], {
+          detached: true,
+          stdio: 'ignore'
+        });
+        this.chromeProcess.unref();
       }
-      exec(launchCmd);
       // Esperar a que Chrome se inicie
       return await this.waitForDebugPort();
     } catch (error) {
