@@ -32,7 +32,16 @@ class SimplyCodesTester {
   
   async checkChromeRunning() {
     try {
-      const { stdout } = await execAsync('ps aux | grep -i "Google Chrome" | grep -v grep');
+      let cmd;
+      if (process.platform === 'darwin') {
+        cmd = 'ps aux | grep -i "Google Chrome" | grep -v grep';
+      } else if (process.platform === 'linux') {
+        // Busca chrome, google-chrome o chromium
+        cmd = 'ps aux | grep -E "(chrome|google-chrome|chromium)" | grep -v grep';
+      } else {
+        cmd = 'ps aux | grep -i "chrome" | grep -v grep';
+      }
+      const { stdout } = await execAsync(cmd);
       return stdout.trim().length > 0;
     } catch {
       return false;
