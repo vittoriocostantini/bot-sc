@@ -88,7 +88,7 @@ class SimplyCodesTester {
         launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu`;
         exec(launchCmd);
       } else {
-        // Usar spawn para lanzar Chrome en Linux
+        // Usar spawn para lanzar Chrome en Linux y capturar errores
         this.chromeProcess = spawn(chromeCmd, [
           '--remote-debugging-port=9222',
           '--user-data-dir=/tmp/chrome-debug',
@@ -96,7 +96,10 @@ class SimplyCodesTester {
           '--disable-gpu'
         ], {
           detached: true,
-          stdio: 'ignore'
+          stdio: ['ignore', 'ignore', 'pipe']
+        });
+        this.chromeProcess.stderr.on('data', (data) => {
+          log.error('Chrome stderr: ' + data.toString());
         });
         this.chromeProcess.unref();
       }
