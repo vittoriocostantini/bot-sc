@@ -4,6 +4,7 @@ import { fork } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
+const { execSync } = require('child_process');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -199,28 +200,47 @@ function bloquearFormulario(bloquear) {
   screen.render();
 }
 
+function chromeDebugAvailable() {
+  try {
+    const result = execSync('curl -s http://localhost:9222/json/version', { encoding: 'utf8' });
+    return result.includes('Chrome');
+  } catch {
+    return false;
+  }
+}
+
 function iniciarBot(cupon, porcentaje) {
   if (running) return;
   running = true;
   bloquearFormulario(true);
   logBox.log('----------------------------------------');
-  logBox.log('Iniciando bot real...');
+  if (chromeDebugAvailable()) {
+    logBox.log('Chrome ya está corriendo en modo debug (puerto 9222 disponible). El bot usará la instancia existente y no relanzará Chrome.');
+  } else {
+    logBox.log('Iniciando bot real...');
+  }
   lastError = '';
   // Ejecutar el bot como proceso hijo usando spawn y desactivar colores
+  const isLinux = process.platform === 'linux';
   child = spawn('node', [path.resolve(__dirname, 'test-simplycodes.js')], {
-    env: { ...process.env, COUPON: cupon, PERCENTAGE: porcentaje, FORCE_COLOR: 0 }
+    env: { ...process.env, COUPON: cupon, PERCENTAGE: porcentaje, FORCE_COLOR: 0 },
+    stdio: isLinux ? 'inherit' : undefined
   });
-  child.stdout.on('data', (data) => {
-    const msg = limpiarAnsi(data.toString().replace(/\n$/, ''));
-    logBox.log(msg);
-    screen.render();
-  });
-  child.stderr.on('data', (data) => {
-    const errMsg = limpiarAnsi(data.toString().replace(/\n$/, ''));
-    lastError = errMsg;
-    logBox.log('[ERROR] ' + errMsg);
-    screen.render();
-  });
+  if (!isLinux) {
+    child.stdout.on('data', (data) => {
+      const msg = limpiarAnsi(data.toString().replace(/\n$/, ''));
+      logBox.log(msg);
+      screen.render();
+    });
+    child.stderr.on('data', (data) => {
+      const errMsg = limpiarAnsi(data.toString().replace(/\n$/, ''));
+      lastError = errMsg;
+      logBox.log('[ERROR] ' + errMsg);
+      screen.render();
+    });
+  } else {
+    logBox.log('--- En Linux: los mensajes de Chrome y errores aparecerán directamente en la terminal donde lanzaste el TUI. ---');
+  }
   child.on('exit', (code) => {
     if (code !== 0) {
       logBox.log('Bot finalizado con error. Código de salida: ' + code);
