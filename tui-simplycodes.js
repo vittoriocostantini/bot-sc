@@ -219,27 +219,24 @@ function iniciarBot(cupon, porcentaje) {
     logBox.log('Iniciando bot real...');
   }
   lastError = '';
-  // Ejecutar el bot como proceso hijo usando spawn y desactivar colores
-  const isLinux = process.platform === 'linux';
+  // Ejecutar el bot como proceso hijo usando spawn y capturar todos los mensajes
   child = spawn('node', [path.resolve(__dirname, 'test-simplycodes.js')], {
     env: { ...process.env, COUPON: cupon, PERCENTAGE: porcentaje, FORCE_COLOR: 0 },
-    stdio: isLinux ? 'inherit' : undefined
+    stdio: ['inherit', 'pipe', 'pipe']
   });
-  if (!isLinux) {
-    child.stdout.on('data', (data) => {
-      const msg = limpiarAnsi(data.toString().replace(/\n$/, ''));
-      logBox.log(msg);
-      screen.render();
-    });
-    child.stderr.on('data', (data) => {
-      const errMsg = limpiarAnsi(data.toString().replace(/\n$/, ''));
-      lastError = errMsg;
-      logBox.log('[ERROR] ' + errMsg);
-      screen.render();
-    });
-  } else {
-    logBox.log('--- En Linux: los mensajes de Chrome y errores aparecerán directamente en la terminal donde lanzaste el TUI. ---');
-  }
+  
+  child.stdout.on('data', (data) => {
+    const msg = limpiarAnsi(data.toString().replace(/\n$/, ''));
+    logBox.log(msg);
+    screen.render();
+  });
+  
+  child.stderr.on('data', (data) => {
+    const errMsg = limpiarAnsi(data.toString().replace(/\n$/, ''));
+    lastError = errMsg;
+    logBox.log('[ERROR] ' + errMsg);
+    screen.render();
+  });
   child.on('exit', (code) => {
     if (code !== 0) {
       logBox.log('Bot finalizado con error. Código de salida: ' + code);

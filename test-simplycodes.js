@@ -88,7 +88,7 @@ class SimplyCodesTester {
         launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu`;
         exec(launchCmd);
       } else {
-        // Usar spawn para lanzar Chrome en Linux, sin detached ni unref, y stdio: 'inherit'
+        // Usar spawn para lanzar Chrome en Linux, redirigiendo output al proceso padre
         this.chromeProcess = spawn(chromeCmd, [
           '--remote-debugging-port=9222',
           '--user-data-dir=/tmp/chrome-debug',
@@ -98,7 +98,16 @@ class SimplyCodesTester {
           '--disable-dev-shm-usage',
           '--disable-accelerated-video-decode'
         ], {
-          stdio: 'inherit'
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+        
+        // Redirigir mensajes de Chrome al stdout/stderr del proceso padre
+        this.chromeProcess.stdout.on('data', (data) => {
+          process.stdout.write(data);
+        });
+        
+        this.chromeProcess.stderr.on('data', (data) => {
+          process.stderr.write(data);
         });
       }
       // Esperar a que Chrome se inicie
