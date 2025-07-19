@@ -146,7 +146,7 @@ class SimplyCodesTester {
         await execAsync('killall google-chrome 2>/dev/null || true');
         await execAsync('killall chromium 2>/dev/null || true');
         await execAsync('killall chromium-browser 2>/dev/null || true');
-        await this.wait(2000);
+        await this.wait(3000);
       } catch (e) {
         // Ignorar errores
       }
@@ -155,28 +155,55 @@ class SimplyCodesTester {
       const chromeCmd = await this.getChromeCommand();
       log.info(`|    Chrome command: ${chromeCmd} |`);
       
-      // Lanzar Chrome con comando simple
-      const simpleCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-web-security --disable-extensions --disable-plugins --disable-default-apps --disable-sync --disable-translate --disable-logging --disable-background-networking --disable-component-update --disable-client-side-phishing-detection --disable-hang-monitor --disable-prompt-on-repost --disable-domain-reliability --disable-features=AudioServiceOutOfProcess --memory-pressure-off --max_old_space_size=4096 --disable-software-rasterizer --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-ipc-flooding-protection --disable-features=VizDisplayCompositor > /dev/null 2>&1 &`;
+      // Crear script de lanzamiento temporal
+      const launchScript = `#!/bin/bash
+export DISPLAY=${process.env.DISPLAY || ':0'}
+cd /tmp
+${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-web-security --disable-extensions --disable-plugins --disable-default-apps --disable-sync --disable-translate --disable-logging --disable-background-networking --disable-component-update --disable-client-side-phishing-detection --disable-hang-monitor --disable-prompt-on-repost --disable-domain-reliability --disable-features=AudioServiceOutOfProcess --memory-pressure-off --max_old_space_size=4096 --disable-software-rasterizer --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-ipc-flooding-protection --disable-features=VizDisplayCompositor --disable-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-accelerated-2d-canvas --disable-accelerated-jpeg-decoding --disable-accelerated-mjpeg-decode --disable-accelerated-video-decode --disable-accelerated-video-encode --disable-gpu-sandbox --disable-software-rasterizer --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-ipc-flooding-protection --disable-features=VizDisplayCompositor --disable-extensions --disable-plugins --disable-default-apps --disable-sync --disable-translate --disable-logging --disable-background-networking --disable-component-update --disable-client-side-phishing-detection --disable-hang-monitor --disable-prompt-on-repost --disable-domain-reliability --disable-features=AudioServiceOutOfProcess --memory-pressure-off --max_old_space_size=4096 > /tmp/chrome.log 2>&1 &
+echo $! > /tmp/chrome.pid
+`;
       
-      log.info('|    Launching Chrome in background... |');
-      await execAsync(simpleCmd);
+      // Escribir script temporal
+      await execAsync('echo "' + launchScript + '" > /tmp/launch-chrome.sh');
+      await execAsync('chmod +x /tmp/launch-chrome.sh');
       
-      // Esperar y verificar
+      log.info('|    Launching Chrome with script... |');
+      await execAsync('/tmp/launch-chrome.sh');
+      
+      // Esperar y verificar proceso
       log.info('|    Waiting for Chrome to start... |');
-      await this.wait(5000);
+      await this.wait(8000);
       
-      // Verificar si el proceso está ejecutándose
+      // Verificar PID del proceso
       try {
-        const { stdout } = await execAsync('ps aux | grep -E "(chrome|chromium)" | grep -v grep');
-        if (stdout.trim()) {
-          log.success('|    Chrome process found! |');
+        const { stdout: pidContent } = await execAsync('cat /tmp/chrome.pid 2>/dev/null || echo ""');
+        if (pidContent.trim()) {
+          const pid = parseInt(pidContent.trim());
+          log.info(`|    Chrome PID: ${pid} |`);
+          
+          // Verificar que el proceso esté ejecutándose
+          const { stdout: processCheck } = await execAsync(`ps -p ${pid} -o pid= 2>/dev/null || echo ""`);
+          if (processCheck.trim()) {
+            log.success('|    Chrome process confirmed! |');
+          } else {
+            log.error('|    Chrome process not found |');
+            return false;
+          }
         } else {
-          log.error('|    Chrome process not found |');
+          log.error('|    Chrome PID file not found |');
           return false;
         }
       } catch (e) {
         log.error('|    Could not verify Chrome process |');
         return false;
+      }
+      
+      // Verificar logs de Chrome
+      try {
+        const { stdout: chromeLog } = await execAsync('tail -10 /tmp/chrome.log 2>/dev/null || echo "No log file"');
+        log.info('|    Chrome log:', chromeLog);
+      } catch (e) {
+        log.info('|    Could not read Chrome log |');
       }
       
       // Esperar a que el puerto esté disponible
@@ -193,8 +220,8 @@ class SimplyCodesTester {
   async waitForDebugPort() {
     log.info('|    Waiting for Chrome debug port... |');
     
-    // En antiX, usar un enfoque más simple
-    const maxAttempts = process.platform === 'linux' ? 20 : 15;
+    // En antiX, usar un enfoque más específico
+    const maxAttempts = process.platform === 'linux' ? 30 : 15;
     const waitTime = process.platform === 'linux' ? 2000 : 2000;
     
     for (let i = 0; i < maxAttempts; i++) {
@@ -206,27 +233,62 @@ class SimplyCodesTester {
         return true;
       }
       
-      // Verificar si el proceso de Chrome sigue ejecutándose
+      // Verificar si el proceso de Chrome sigue ejecutándose usando PID
       try {
-        const { stdout } = await execAsync('ps aux | grep -E "(chrome|chromium)" | grep -v grep');
-        if (!stdout.trim()) {
-          log.error('Chrome process not found');
+        const { stdout: pidContent } = await execAsync('cat /tmp/chrome.pid 2>/dev/null || echo ""');
+        if (pidContent.trim()) {
+          const pid = parseInt(pidContent.trim());
+          const { stdout: processCheck } = await execAsync(`ps -p ${pid} -o pid= 2>/dev/null || echo ""`);
+          if (!processCheck.trim()) {
+            log.error('Chrome process died unexpectedly');
+            
+            // Verificar logs de Chrome
+            try {
+              const { stdout: chromeLog } = await execAsync('tail -20 /tmp/chrome.log 2>/dev/null || echo "No log file"');
+              log.error('Chrome log (last 20 lines):', chromeLog);
+            } catch (e) {
+              log.error('Could not read Chrome log');
+            }
+            
+            return false;
+          }
+        } else {
+          log.error('Chrome PID file not found');
           return false;
         }
       } catch (e) {
         log.error('Could not check Chrome process');
         return false;
       }
+      
+      // Cada 5 intentos, mostrar información adicional
+      if (i % 5 === 0 && i > 0) {
+        try {
+          const { stdout: memInfo } = await execAsync('free -m | grep Mem');
+          log.info('Memory usage:', memInfo);
+          
+          const { stdout: portInfo } = await execAsync('netstat -tlnp 2>/dev/null | grep :9222 || echo "Port 9222 not found"');
+          log.info('Port 9222 status:', portInfo);
+        } catch (e) {
+          log.info('Could not get additional diagnostic info');
+        }
+      }
     }
     
     log.error(`Chrome debug connection failed after ${maxAttempts} attempts`);
     
-    // Información de diagnóstico simple
+    // Información de diagnóstico final
     try {
-      const { stdout } = await execAsync('netstat -tlnp 2>/dev/null | grep :9222 || echo "Port 9222 not found"');
-      log.info('Port 9222 status:', stdout);
+      const { stdout: portInfo } = await execAsync('netstat -tlnp 2>/dev/null | grep :9222 || echo "Port 9222 not found"');
+      log.error('Final port 9222 status:', portInfo);
+      
+      const { stdout: chromeLog } = await execAsync('tail -30 /tmp/chrome.log 2>/dev/null || echo "No log file"');
+      log.error('Final Chrome log:', chromeLog);
+      
+      const { stdout: memInfo } = await execAsync('free -h');
+      log.error('Final memory status:', memInfo);
     } catch (e) {
-      log.error('Could not check port status');
+      log.error('Could not get final diagnostic information');
     }
     
     return false;
@@ -784,6 +846,13 @@ class SimplyCodesTester {
       log.info('|   Keeping Chrome running...  |');
       // No matar el proceso, solo desconectarlo
       this.chromeProcess = null;
+    }
+    
+    // Limpiar archivos temporales
+    try {
+      await execAsync('rm -f /tmp/launch-chrome.sh /tmp/chrome.pid /tmp/chrome.log 2>/dev/null || true');
+    } catch (e) {
+      // Ignorar errores de limpieza
     }
   }
 }
