@@ -208,6 +208,21 @@ function chromeDebugAvailable() {
   }
 }
 
+function isChromeRunning() {
+  try {
+    if (process.platform === 'darwin') {
+      const result = execSync('ps aux | grep -i "Google Chrome" | grep -v grep', { encoding: 'utf8' });
+      return result.trim().length > 0;
+    } else if (process.platform === 'linux') {
+      const result = execSync('ps aux | grep -E "(chrome|google-chrome|chromium)" | grep -v grep', { encoding: 'utf8' });
+      return result.trim().length > 0;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 function iniciarBot(cupon, porcentaje) {
   if (running) return;
   running = true;
@@ -215,6 +230,8 @@ function iniciarBot(cupon, porcentaje) {
   logBox.log('----------------------------------------');
   if (chromeDebugAvailable()) {
     logBox.log('Chrome ya está corriendo en modo debug (puerto 9222 disponible). El bot usará la instancia existente y no relanzará Chrome.');
+  } else if (isChromeRunning()) {
+    logBox.log('Chrome está ejecutándose pero sin puerto debug. En Linux, el bot intentará conectar sin cerrar Chrome.');
   } else {
     logBox.log('Iniciando bot real...');
   }

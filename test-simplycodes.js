@@ -65,6 +65,26 @@ class SimplyCodesTester {
       // Usar 'open' para macOS
       return 'open -a "Google Chrome" --args';
     } else if (process.platform === 'linux') {
+      // En Linux, probar diferentes nombres de Chrome/Chromium
+      const possibleCommands = [
+        'google-chrome',
+        'google-chrome-stable',
+        'chromium',
+        'chromium-browser',
+        'chrome'
+      ];
+      
+      // Retornar el primer comando disponible o el predeterminado
+      for (const cmd of possibleCommands) {
+        try {
+          execSync(`which ${cmd}`, { stdio: 'ignore' });
+          return cmd;
+        } catch (e) {
+          // Continuar con el siguiente comando
+        }
+      }
+      
+      // Si no se encuentra ninguno, usar google-chrome como fallback
       return 'google-chrome';
     } else {
       throw new Error('Unsupported OS for Chrome automation');
@@ -74,21 +94,48 @@ class SimplyCodesTester {
   async startChromeWithDebugging() {
     try {
       log.info('|    Chrome Debug Mode Starting...    |');
-      // Cerrar Chrome existente
+      
+      // En Linux, intentar primero conectar a una instancia existente
+      if (process.platform === 'linux') {
+        log.info('|    Checking for existing Chrome... |');
+        const isRunning = await this.checkChromeRunning();
+        if (isRunning) {
+          log.info('|    Chrome is running, trying to connect... |');
+          // Intentar conectar sin cerrar Chrome
+          const connected = await this.connectToChrome();
+          if (connected) {
+            log.success('|    Connected to existing Chrome! |');
+            return true;
+          }
+          log.info('|    Could not connect to existing Chrome, will try to restart... |');
+        }
+      }
+      
+      // Cerrar Chrome existente solo si es necesario
       if (process.platform === 'darwin') {
         await execAsync('pkill -f "Google Chrome"');
       } else if (process.platform === 'linux') {
-        await execAsync('pkill -f "chrome"');
+        // En Linux, usar killall para asegurar que se cierre completamente
+        try {
+          await execAsync('killall chrome');
+          await execAsync('killall google-chrome');
+          await execAsync('killall chromium');
+          await execAsync('killall chromium-browser');
+        } catch (e) {
+          // Ignorar errores si no hay procesos para matar
+        }
       }
-      await this.wait(4000); // Espera más tiempo tras cerrar Chrome
+      
+      await this.wait(3000); // Esperar a que se cierre completamente
+      
       // Iniciar Chrome con debugging
       const chromeCmd = this.getChromeCommand();
-      let launchCmd;
+      
       if (process.platform === 'darwin') {
-        launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu`;
+        const launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu`;
         exec(launchCmd);
       } else {
-        // Usar spawn para lanzar Chrome en Linux, redirigiendo output al proceso padre
+        // En Linux, usar spawn con más opciones de estabilidad
         this.chromeProcess = spawn(chromeCmd, [
           '--remote-debugging-port=9222',
           '--user-data-dir=/tmp/chrome-debug',
@@ -96,12 +143,18 @@ class SimplyCodesTester {
           '--disable-gpu',
           '--disable-software-rasterizer',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-video-decode'
+          '--disable-accelerated-video-decode',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection'
         ], {
-          stdio: ['ignore', 'pipe', 'pipe']
+          stdio: ['ignore', 'pipe', 'pipe'],
+          detached: false
         });
         
-        // Redirigir mensajes de Chrome al stdout/stderr del proceso padre
+        // Manejar eventos del proceso
         this.chromeProcess.stdout.on('data', (data) => {
           process.stdout.write(data);
         });
@@ -109,7 +162,18 @@ class SimplyCodesTester {
         this.chromeProcess.stderr.on('data', (data) => {
           process.stderr.write(data);
         });
+        
+        this.chromeProcess.on('error', (error) => {
+          log.error('Chrome process error:', error.message);
+        });
+        
+        this.chromeProcess.on('exit', (code) => {
+          if (code !== 0) {
+            log.error(`Chrome process exited with code: ${code}`);
+          }
+        });
       }
+      
       // Esperar a que Chrome se inicie
       return await this.waitForDebugPort();
     } catch (error) {
@@ -157,13 +221,37 @@ class SimplyCodesTester {
       log.success('Chrome is already running in debug mode');
       return true;
     }
-    // Solo si el puerto no está disponible, intenta cerrar y relanzar Chrome
-    const isRunning = await this.checkChromeRunning();
-    if (isRunning) {
-      log.info('Chrome is running but debug port not available');
+    
+    // En Linux, intentar conectar a Chrome existente sin cerrarlo
+    if (process.platform === 'linux') {
+      const isRunning = await this.checkChromeRunning();
+      if (isRunning) {
+        log.info('Chrome is running but debug port not available');
+        log.info('Attempting to connect to existing Chrome...');
+        
+        // Intentar conectar directamente
+        try {
+          const connected = await this.connectToChrome();
+          if (connected) {
+            log.success('Successfully connected to existing Chrome!');
+            return true;
+          }
+        } catch (error) {
+          log.info('Could not connect to existing Chrome, will restart...');
+        }
+      } else {
+        log.info('Chrome is not running');
+      }
     } else {
-      log.info('Chrome is not running');
+      // En macOS, comportamiento original
+      const isRunning = await this.checkChromeRunning();
+      if (isRunning) {
+        log.info('Chrome is running but debug port not available');
+      } else {
+        log.info('Chrome is not running');
+      }
     }
+    
     return await this.startChromeWithDebugging();
   }
 
@@ -557,8 +645,35 @@ class SimplyCodesTester {
       log.info('|   Disconnecting Browser...   |');
       await this.browser.disconnect();
     }
+    
+    // En Linux, no cerrar Chrome al finalizar para mantener la instancia
+    if (process.platform === 'linux' && this.chromeProcess) {
+      log.info('|   Keeping Chrome running...  |');
+      // No matar el proceso, solo desconectarlo
+      this.chromeProcess = null;
+    }
   }
 }
+
+// Variable global para el tester
+let globalTester = null;
+
+// Manejador de señales para cerrar Chrome correctamente
+process.on('SIGINT', async () => {
+  log.info('|   Received SIGINT, cleaning up... |');
+  if (globalTester) {
+    await globalTester.close();
+  }
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  log.info('|   Received SIGTERM, cleaning up... |');
+  if (globalTester) {
+    await globalTester.close();
+  }
+  process.exit(0);
+});
 
 // Ejecutar el test
 async function runTest() {
@@ -589,14 +704,14 @@ async function runTest() {
       }
     ]);
   }
-  const tester = new SimplyCodesTester(answers.coupon, answers.percentage);
+  globalTester = new SimplyCodesTester(answers.coupon, answers.percentage);
   try {
-    await tester.testPage();
+    await globalTester.testPage();
   } catch (error) {
     log.error('|   Test Error                |');
     log.error(`|   ${error.message}          |`);
   } finally {
-    await tester.close();
+    await globalTester.close();
   }
 }
 
