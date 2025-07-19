@@ -105,6 +105,12 @@ class SimplyCodesTester {
     try {
       log.info('|    Chrome Debug Mode Starting...    |');
       
+      // En antiX, usar un enfoque más simple y directo
+      if (process.platform === 'linux') {
+        return await this.startChromeSimple();
+      }
+      
+      // Para macOS, mantener el método original
       // Limpiar directorio temporal de Chrome si existe
       try {
         await execAsync('rm -rf /tmp/chrome-debug');
@@ -113,156 +119,83 @@ class SimplyCodesTester {
         // Ignorar errores si el directorio no existe
       }
       
-      // En Linux, intentar primero conectar a una instancia existente
-      if (process.platform === 'linux') {
-        log.info('|    Checking for existing Chrome... |');
-        const isRunning = await this.checkChromeRunning();
-        if (isRunning) {
-          log.info('|    Chrome is running, trying to connect... |');
-          // Intentar conectar sin cerrar Chrome
-          const connected = await this.connectToChrome();
-          if (connected) {
-            log.success('|    Connected to existing Chrome! |');
-            return true;
-          }
-          log.info('|    Could not connect to existing Chrome, will try to restart... |');
-        }
-      }
-      
-      // Cerrar Chrome existente solo si es necesario
-      if (process.platform === 'darwin') {
-        await execAsync('pkill -f "Google Chrome"');
-      } else if (process.platform === 'linux') {
-        // En Linux, usar killall para asegurar que se cierre completamente
-        try {
-          await execAsync('killall chrome');
-          await execAsync('killall google-chrome');
-          await execAsync('killall chromium');
-          await execAsync('killall chromium-browser');
-        } catch (e) {
-          // Ignorar errores si no hay procesos para matar
-        }
-      }
-      
-      await this.wait(3000); // Esperar a que se cierre completamente
+      // Cerrar Chrome existente
+      await execAsync('pkill -f "Google Chrome"');
+      await this.wait(3000);
       
       // Iniciar Chrome con debugging
       const chromeCmd = await this.getChromeCommand();
+      const launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu`;
+      exec(launchCmd);
       
-      if (process.platform === 'darwin') {
-        const launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu`;
-        exec(launchCmd);
-      } else {
-        // En Linux, usar spawn con opciones mínimas para antiX
-        const chromeArgs = [
-          '--remote-debugging-port=9222',
-          '--user-data-dir=/tmp/chrome-debug',
-          '--no-sandbox',
-          '--disable-gpu',
-          '--disable-dev-shm-usage',
-          '--disable-web-security',
-          '--disable-features=VizDisplayCompositor',
-          '--disable-software-rasterizer',
-          '--disable-background-timer-throttling',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-renderer-backgrounding',
-          '--disable-features=TranslateUI',
-          '--disable-ipc-flooding-protection',
-          '--disable-extensions',
-          '--disable-plugins',
-          '--disable-default-apps',
-          '--disable-sync',
-          '--disable-translate',
-          '--disable-logging',
-          '--disable-background-networking',
-          '--disable-component-update',
-          '--disable-client-side-phishing-detection',
-          '--disable-hang-monitor',
-          '--disable-prompt-on-repost',
-          '--disable-domain-reliability',
-          '--disable-features=AudioServiceOutOfProcess',
-          '--memory-pressure-off',
-          '--max_old_space_size=4096'
-        ];
-        
-        log.info(`|    Starting Chrome with: ${chromeCmd} |`);
-        
-        this.chromeProcess = spawn(chromeCmd, chromeArgs, {
-          stdio: ['ignore', 'pipe', 'pipe'],
-          detached: false,
-          env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0' }
-        });
-        
-        // Manejar eventos del proceso
-        this.chromeProcess.stdout.on('data', (data) => {
-          const output = data.toString();
-          if (output.includes('DevTools listening')) {
-            log.success('|    Chrome DevTools started! |');
-          }
-          process.stdout.write(data);
-        });
-        
-        this.chromeProcess.stderr.on('data', (data) => {
-          const output = data.toString();
-          // Filtrar mensajes de error comunes que no son críticos
-          if (!output.includes('Failed to connect to session bus') && 
-              !output.includes('Could not connect to accessibility bus') &&
-              !output.includes('Gtk-Message')) {
-            process.stderr.write(data);
-          }
-        });
-        
-        this.chromeProcess.on('error', (error) => {
-          log.error('Chrome process error:', error.message);
-        });
-        
-        this.chromeProcess.on('exit', (code) => {
-          if (code !== 0) {
-            log.error(`Chrome process exited with code: ${code}`);
-          }
-        });
-      }
-      
-      // Esperar a que Chrome se inicie
-      const success = await this.waitForDebugPort();
-      
-      // Si falla con spawn, intentar con exec como fallback
-      if (!success && process.platform === 'linux') {
-        log.info('|    Trying alternative Chrome launch method... |');
-        return await this.startChromeWithExec();
-      }
-      
-      return success;
+      return await this.waitForDebugPort();
     } catch (error) {
       log.error('Chrome startup error:', error.message);
       return false;
     }
   }
   
-  async startChromeWithExec() {
+  async startChromeSimple() {
     try {
-      log.info('|    Trying Chrome with exec method... |');
+      log.info('|    Using simple Chrome launch for antiX... |');
       
+      // Limpiar completamente
+      try {
+        await execAsync('rm -rf /tmp/chrome-debug');
+        await execAsync('killall chrome 2>/dev/null || true');
+        await execAsync('killall google-chrome 2>/dev/null || true');
+        await execAsync('killall chromium 2>/dev/null || true');
+        await execAsync('killall chromium-browser 2>/dev/null || true');
+        await this.wait(2000);
+      } catch (e) {
+        // Ignorar errores
+      }
+      
+      // Obtener comando de Chrome
       const chromeCmd = await this.getChromeCommand();
-      const launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-web-security --disable-extensions --disable-plugins --disable-default-apps --disable-sync --disable-translate --disable-logging --disable-background-networking --disable-component-update --disable-client-side-phishing-detection --disable-hang-monitor --disable-prompt-on-repost --disable-domain-reliability --disable-features=AudioServiceOutOfProcess --memory-pressure-off --max_old_space_size=4096 > /dev/null 2>&1 &`;
+      log.info(`|    Chrome command: ${chromeCmd} |`);
       
-      await execAsync(launchCmd);
-      log.info('|    Chrome launched with exec method |');
+      // Lanzar Chrome con comando simple
+      const simpleCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-web-security --disable-extensions --disable-plugins --disable-default-apps --disable-sync --disable-translate --disable-logging --disable-background-networking --disable-component-update --disable-client-side-phishing-detection --disable-hang-monitor --disable-prompt-on-repost --disable-domain-reliability --disable-features=AudioServiceOutOfProcess --memory-pressure-off --max_old_space_size=4096 --disable-software-rasterizer --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-ipc-flooding-protection --disable-features=VizDisplayCompositor > /dev/null 2>&1 &`;
       
-      // Esperar a que se inicie
+      log.info('|    Launching Chrome in background... |');
+      await execAsync(simpleCmd);
+      
+      // Esperar y verificar
+      log.info('|    Waiting for Chrome to start... |');
+      await this.wait(5000);
+      
+      // Verificar si el proceso está ejecutándose
+      try {
+        const { stdout } = await execAsync('ps aux | grep -E "(chrome|chromium)" | grep -v grep');
+        if (stdout.trim()) {
+          log.success('|    Chrome process found! |');
+        } else {
+          log.error('|    Chrome process not found |');
+          return false;
+        }
+      } catch (e) {
+        log.error('|    Could not verify Chrome process |');
+        return false;
+      }
+      
+      // Esperar a que el puerto esté disponible
       return await this.waitForDebugPort();
+      
     } catch (error) {
-      log.error('Chrome exec method failed:', error.message);
+      log.error('Simple Chrome launch failed:', error.message);
       return false;
     }
   }
+  
+
 
   async waitForDebugPort() {
     log.info('|    Waiting for Chrome debug port... |');
     
-    // En antiX, puede tomar más tiempo
-    const maxAttempts = process.platform === 'linux' ? 25 : 15;
-    const waitTime = process.platform === 'linux' ? 3000 : 2000;
+    // En antiX, usar un enfoque más simple
+    const maxAttempts = process.platform === 'linux' ? 20 : 15;
+    const waitTime = process.platform === 'linux' ? 2000 : 2000;
     
     for (let i = 0; i < maxAttempts; i++) {
       await this.wait(waitTime);
@@ -274,48 +207,26 @@ class SimplyCodesTester {
       }
       
       // Verificar si el proceso de Chrome sigue ejecutándose
-      if (this.chromeProcess) {
-        try {
-          const { stdout } = await execAsync(`ps -p ${this.chromeProcess.pid} -o pid=`);
-          if (!stdout.trim()) {
-            log.error('Chrome process died unexpectedly');
-            return false;
-          }
-        } catch (e) {
+      try {
+        const { stdout } = await execAsync('ps aux | grep -E "(chrome|chromium)" | grep -v grep');
+        if (!stdout.trim()) {
           log.error('Chrome process not found');
           return false;
         }
-      }
-      
-      // En Linux, verificar si hay errores específicos
-      if (process.platform === 'linux' && i > 10) {
-        try {
-          const { stdout } = await execAsync('dmesg | tail -5 | grep -i chrome || echo "No Chrome errors in dmesg"');
-          if (!stdout.includes('No Chrome errors')) {
-            log.info('Chrome errors in dmesg:', stdout);
-          }
-        } catch (e) {
-          // Ignorar errores de dmesg
-        }
+      } catch (e) {
+        log.error('Could not check Chrome process');
+        return false;
       }
     }
     
     log.error(`Chrome debug connection failed after ${maxAttempts} attempts`);
     
-    // Intentar obtener información de diagnóstico
+    // Información de diagnóstico simple
     try {
       const { stdout } = await execAsync('netstat -tlnp 2>/dev/null | grep :9222 || echo "Port 9222 not found"');
       log.info('Port 9222 status:', stdout);
-      
-      // Verificar procesos de Chrome
-      const { stdout: chromeProcs } = await execAsync('ps aux | grep -E "(chrome|chromium)" | grep -v grep || echo "No Chrome processes"');
-      log.info('Chrome processes:', chromeProcs);
-      
-      // Verificar uso de memoria
-      const { stdout: memInfo } = await execAsync('free -h || echo "Memory info not available"');
-      log.info('Memory usage:', memInfo);
     } catch (e) {
-      log.error('Could not get diagnostic information');
+      log.error('Could not check port status');
     }
     
     return false;
@@ -680,7 +591,17 @@ class SimplyCodesTester {
     
     // Verificar que Chrome esté instalado
     try {
-      await this.getChromeCommand();
+      const chromeCmd = await this.getChromeCommand();
+      log.info(`|   Chrome found: ${chromeCmd} |`);
+      
+      // Verificar que Chrome puede ejecutarse
+      try {
+        const { stdout } = await execAsync(`${chromeCmd} --version`);
+        log.info(`|   Chrome version: ${stdout.trim()} |`);
+      } catch (e) {
+        log.error('|   Chrome cannot be executed |');
+        return false;
+      }
     } catch (error) {
       log.error('|   Chrome not found on system    |');
       log.error('|   Please install Google Chrome  |');
@@ -718,6 +639,14 @@ class SimplyCodesTester {
         // Verificar espacio en disco
         const { stdout: diskInfo } = await execAsync('df /tmp -h');
         log.info('|   Disk space for /tmp:', diskInfo.split('\n')[1]);
+        
+        // Verificar DISPLAY
+        if (!process.env.DISPLAY) {
+          log.error('|   DISPLAY environment not set |');
+          log.error('|   Chrome may not start properly |');
+        } else {
+          log.info(`|   DISPLAY: ${process.env.DISPLAY} |`);
+        }
         
       } catch (error) {
         log.info('|   Could not check system resources |');
