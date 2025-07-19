@@ -153,32 +153,63 @@ class SimplyCodesTester {
         const launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu`;
         exec(launchCmd);
       } else {
-        // En Linux, usar spawn con más opciones de estabilidad
-        this.chromeProcess = spawn(chromeCmd, [
+        // En Linux, usar spawn con opciones mínimas para antiX
+        const chromeArgs = [
           '--remote-debugging-port=9222',
           '--user-data-dir=/tmp/chrome-debug',
           '--no-sandbox',
           '--disable-gpu',
-          '--disable-software-rasterizer',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-video-decode',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--disable-software-rasterizer',
           '--disable-background-timer-throttling',
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding',
           '--disable-features=TranslateUI',
-          '--disable-ipc-flooding-protection'
-        ], {
+          '--disable-ipc-flooding-protection',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-default-apps',
+          '--disable-sync',
+          '--disable-translate',
+          '--disable-logging',
+          '--disable-background-networking',
+          '--disable-component-update',
+          '--disable-client-side-phishing-detection',
+          '--disable-hang-monitor',
+          '--disable-prompt-on-repost',
+          '--disable-domain-reliability',
+          '--disable-features=AudioServiceOutOfProcess',
+          '--memory-pressure-off',
+          '--max_old_space_size=4096'
+        ];
+        
+        log.info(`|    Starting Chrome with: ${chromeCmd} |`);
+        
+        this.chromeProcess = spawn(chromeCmd, chromeArgs, {
           stdio: ['ignore', 'pipe', 'pipe'],
-          detached: false
+          detached: false,
+          env: { ...process.env, DISPLAY: process.env.DISPLAY || ':0' }
         });
         
         // Manejar eventos del proceso
         this.chromeProcess.stdout.on('data', (data) => {
+          const output = data.toString();
+          if (output.includes('DevTools listening')) {
+            log.success('|    Chrome DevTools started! |');
+          }
           process.stdout.write(data);
         });
         
         this.chromeProcess.stderr.on('data', (data) => {
-          process.stderr.write(data);
+          const output = data.toString();
+          // Filtrar mensajes de error comunes que no son críticos
+          if (!output.includes('Failed to connect to session bus') && 
+              !output.includes('Could not connect to accessibility bus') &&
+              !output.includes('Gtk-Message')) {
+            process.stderr.write(data);
+          }
         });
         
         this.chromeProcess.on('error', (error) => {
@@ -193,18 +224,49 @@ class SimplyCodesTester {
       }
       
       // Esperar a que Chrome se inicie
-      return await this.waitForDebugPort();
+      const success = await this.waitForDebugPort();
+      
+      // Si falla con spawn, intentar con exec como fallback
+      if (!success && process.platform === 'linux') {
+        log.info('|    Trying alternative Chrome launch method... |');
+        return await this.startChromeWithExec();
+      }
+      
+      return success;
     } catch (error) {
       log.error('Chrome startup error:', error.message);
+      return false;
+    }
+  }
+  
+  async startChromeWithExec() {
+    try {
+      log.info('|    Trying Chrome with exec method... |');
+      
+      const chromeCmd = await this.getChromeCommand();
+      const launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-web-security --disable-extensions --disable-plugins --disable-default-apps --disable-sync --disable-translate --disable-logging --disable-background-networking --disable-component-update --disable-client-side-phishing-detection --disable-hang-monitor --disable-prompt-on-repost --disable-domain-reliability --disable-features=AudioServiceOutOfProcess --memory-pressure-off --max_old_space_size=4096 > /dev/null 2>&1 &`;
+      
+      await execAsync(launchCmd);
+      log.info('|    Chrome launched with exec method |');
+      
+      // Esperar a que se inicie
+      return await this.waitForDebugPort();
+    } catch (error) {
+      log.error('Chrome exec method failed:', error.message);
       return false;
     }
   }
 
   async waitForDebugPort() {
     log.info('|    Waiting for Chrome debug port... |');
-    for (let i = 0; i < 15; i++) { // Aumentar a 15 intentos
-      await this.wait(2000); // Esperar 2 segundos entre intentos
-      log.info(`|    Attempt ${i + 1}/15... |`);
+    
+    // En antiX, puede tomar más tiempo
+    const maxAttempts = process.platform === 'linux' ? 25 : 15;
+    const waitTime = process.platform === 'linux' ? 3000 : 2000;
+    
+    for (let i = 0; i < maxAttempts; i++) {
+      await this.wait(waitTime);
+      log.info(`|    Attempt ${i + 1}/${maxAttempts}... |`);
       
       if (await this.checkDebugPort()) {
         log.success('|   Chrome Debug Connected    |');
@@ -224,16 +286,36 @@ class SimplyCodesTester {
           return false;
         }
       }
+      
+      // En Linux, verificar si hay errores específicos
+      if (process.platform === 'linux' && i > 10) {
+        try {
+          const { stdout } = await execAsync('dmesg | tail -5 | grep -i chrome || echo "No Chrome errors in dmesg"');
+          if (!stdout.includes('No Chrome errors')) {
+            log.info('Chrome errors in dmesg:', stdout);
+          }
+        } catch (e) {
+          // Ignorar errores de dmesg
+        }
+      }
     }
     
-    log.error('Chrome debug connection failed after 15 attempts');
+    log.error(`Chrome debug connection failed after ${maxAttempts} attempts`);
     
     // Intentar obtener información de diagnóstico
     try {
       const { stdout } = await execAsync('netstat -tlnp 2>/dev/null | grep :9222 || echo "Port 9222 not found"');
       log.info('Port 9222 status:', stdout);
+      
+      // Verificar procesos de Chrome
+      const { stdout: chromeProcs } = await execAsync('ps aux | grep -E "(chrome|chromium)" | grep -v grep || echo "No Chrome processes"');
+      log.info('Chrome processes:', chromeProcs);
+      
+      // Verificar uso de memoria
+      const { stdout: memInfo } = await execAsync('free -h || echo "Memory info not available"');
+      log.info('Memory usage:', memInfo);
     } catch (e) {
-      log.error('Could not check port status');
+      log.error('Could not get diagnostic information');
     }
     
     return false;
@@ -612,6 +694,34 @@ class SimplyCodesTester {
     } catch (error) {
       log.error('|   No write permission in /tmp   |');
       return false;
+    }
+    
+    // Verificar recursos del sistema en Linux
+    if (process.platform === 'linux') {
+      try {
+        // Verificar memoria disponible
+        const { stdout: memInfo } = await execAsync('free -m');
+        const memLines = memInfo.split('\n');
+        const memLine = memLines[1]; // Línea de memoria total
+        const memValues = memLine.split(/\s+/);
+        const totalMem = parseInt(memValues[1]);
+        const availableMem = parseInt(memValues[6]);
+        
+        log.info(`|   Total RAM: ${totalMem}MB |`);
+        log.info(`|   Available RAM: ${availableMem}MB |`);
+        
+        if (availableMem < 512) {
+          log.error('|   Insufficient memory (< 512MB) |');
+          log.error('|   Chrome may not start properly |');
+        }
+        
+        // Verificar espacio en disco
+        const { stdout: diskInfo } = await execAsync('df /tmp -h');
+        log.info('|   Disk space for /tmp:', diskInfo.split('\n')[1]);
+        
+      } catch (error) {
+        log.info('|   Could not check system resources |');
+      }
     }
     
     log.success('|   System requirements OK      |');
