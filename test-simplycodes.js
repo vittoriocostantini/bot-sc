@@ -57,10 +57,17 @@ class SimplyCodesTester {
     }
   }
 
-  getChromeCommand() {
+  async getChromeCommand() {
     if (process.env.CHROME_PATH) {
-      return process.env.CHROME_PATH;
+      // Verificar que el comando personalizado existe
+      try {
+        await execAsync(`which ${process.env.CHROME_PATH}`);
+        return process.env.CHROME_PATH;
+      } catch (e) {
+        log.error(`Chrome path not found: ${process.env.CHROME_PATH}`);
+      }
     }
+    
     if (process.platform === 'darwin') {
       // Usar 'open' para macOS
       return 'open -a "Google Chrome" --args';
@@ -74,18 +81,21 @@ class SimplyCodesTester {
         'chrome'
       ];
       
-      // Retornar el primer comando disponible o el predeterminado
+      // Retornar el primer comando disponible
       for (const cmd of possibleCommands) {
         try {
-          execSync(`which ${cmd}`, { stdio: 'ignore' });
+          await execAsync(`which ${cmd}`);
+          log.info(`|    Found Chrome: ${cmd} |`);
           return cmd;
         } catch (e) {
           // Continuar con el siguiente comando
         }
       }
       
-      // Si no se encuentra ninguno, usar google-chrome como fallback
-      return 'google-chrome';
+      // Si no se encuentra ninguno, mostrar error
+      log.error('No Chrome/Chromium installation found');
+      log.error('Please install Google Chrome or Chromium');
+      throw new Error('Chrome not found');
     } else {
       throw new Error('Unsupported OS for Chrome automation');
     }
@@ -94,6 +104,14 @@ class SimplyCodesTester {
   async startChromeWithDebugging() {
     try {
       log.info('|    Chrome Debug Mode Starting...    |');
+      
+      // Limpiar directorio temporal de Chrome si existe
+      try {
+        await execAsync('rm -rf /tmp/chrome-debug');
+        log.info('|    Cleaned Chrome debug directory |');
+      } catch (e) {
+        // Ignorar errores si el directorio no existe
+      }
       
       // En Linux, intentar primero conectar a una instancia existente
       if (process.platform === 'linux') {
@@ -129,7 +147,7 @@ class SimplyCodesTester {
       await this.wait(3000); // Esperar a que se cierre completamente
       
       // Iniciar Chrome con debugging
-      const chromeCmd = this.getChromeCommand();
+      const chromeCmd = await this.getChromeCommand();
       
       if (process.platform === 'darwin') {
         const launchCmd = `${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu`;
@@ -183,20 +201,54 @@ class SimplyCodesTester {
   }
 
   async waitForDebugPort() {
-    for (let i = 0; i < 10; i++) {
-      await this.wait(1000);
+    log.info('|    Waiting for Chrome debug port... |');
+    for (let i = 0; i < 15; i++) { // Aumentar a 15 intentos
+      await this.wait(2000); // Esperar 2 segundos entre intentos
+      log.info(`|    Attempt ${i + 1}/15... |`);
+      
       if (await this.checkDebugPort()) {
         log.success('|   Chrome Debug Connected    |');
         return true;
       }
+      
+      // Verificar si el proceso de Chrome sigue ejecutándose
+      if (this.chromeProcess) {
+        try {
+          const { stdout } = await execAsync(`ps -p ${this.chromeProcess.pid} -o pid=`);
+          if (!stdout.trim()) {
+            log.error('Chrome process died unexpectedly');
+            return false;
+          }
+        } catch (e) {
+          log.error('Chrome process not found');
+          return false;
+        }
+      }
     }
-    log.error('Chrome debug connection failed');
+    
+    log.error('Chrome debug connection failed after 15 attempts');
+    
+    // Intentar obtener información de diagnóstico
+    try {
+      const { stdout } = await execAsync('netstat -tlnp 2>/dev/null | grep :9222 || echo "Port 9222 not found"');
+      log.info('Port 9222 status:', stdout);
+    } catch (e) {
+      log.error('Could not check port status');
+    }
+    
     return false;
   }
 
   async connectToChrome() {
     try {
       log.info('|    Connecting to Chrome...   |');
+      
+      // Verificar que el puerto esté disponible antes de conectar
+      const debugAvailable = await this.checkDebugPort();
+      if (!debugAvailable) {
+        log.error('Debug port 9222 not available');
+        return false;
+      }
       
       this.browser = await puppeteer.connect({
         browserURL: 'http://localhost:9222',
@@ -211,6 +263,16 @@ class SimplyCodesTester {
       return true;
     } catch (error) {
       log.error('Chrome connection error:', error.message);
+      log.error('Error details:', error.stack);
+      
+      // Intentar obtener más información sobre el estado del puerto
+      try {
+        const { stdout } = await execAsync('curl -s http://localhost:9222/json/version');
+        log.info('Debug port response:', stdout);
+      } catch (curlError) {
+        log.error('Debug port not responding to curl');
+      }
+      
       return false;
     }
   }
@@ -531,8 +593,40 @@ class SimplyCodesTester {
 
   // ===== MÉTODO PRINCIPAL =====
   
+  async checkSystemRequirements() {
+    log.info('|   Checking system requirements...   |');
+    
+    // Verificar que Chrome esté instalado
+    try {
+      await this.getChromeCommand();
+    } catch (error) {
+      log.error('|   Chrome not found on system    |');
+      log.error('|   Please install Google Chrome  |');
+      return false;
+    }
+    
+    // Verificar permisos de escritura en /tmp
+    try {
+      await execAsync('touch /tmp/chrome-debug-test');
+      await execAsync('rm /tmp/chrome-debug-test');
+    } catch (error) {
+      log.error('|   No write permission in /tmp   |');
+      return false;
+    }
+    
+    log.success('|   System requirements OK      |');
+    return true;
+  }
+  
   async testPage() {
     log.info('|   Checking Chrome...                |');
+    
+    // Verificar requisitos del sistema
+    if (!await this.checkSystemRequirements()) {
+      log.error('|   System requirements failed |');
+      log.error('|   Aborting...                |');
+      return;
+    }
     
     // Inicializar Chrome
     if (!await this.ensureChromeRunning() || !await this.connectToChrome()) {
