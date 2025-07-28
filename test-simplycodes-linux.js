@@ -580,9 +580,9 @@ class SimplyCodesLinuxTester {
       // Limpiar procesos anteriores
       await this.cleanupChromeProcesses();
       
-      // Lanzar Chrome con Puppeteer
+      // Lanzar Chrome con Puppeteer (nuevo modo headless)
       this.browser = await puppeteer.launch({
-        headless: true,
+        headless: 'new', // Nuevo modo headless
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',

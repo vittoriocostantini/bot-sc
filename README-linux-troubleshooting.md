@@ -32,6 +32,36 @@ Este script:
 - Instala Xvfb para modo headless
 - Verifica la instalación
 
+## ⚠️ Advertencia de Deprecación de Puppeteer
+
+Si ves esta advertencia:
+```
+Puppeteer old headless deprecation warning
+```
+
+**Solución:**
+```bash
+# Verificar versión de Puppeteer
+node check-puppeteer-version.js
+
+# Actualizar Puppeteer si es necesario
+npm update puppeteer
+
+# O instalar la versión más reciente
+npm install puppeteer@latest
+```
+
+**¿Por qué ocurre?**
+- Puppeteer cambió el modo headless en la versión 20.7.0
+- El modo antiguo (`headless: true`) está deprecado
+- El nuevo modo es `headless: 'new'`
+
+**Ventajas del nuevo modo:**
+- ✅ Mejor rendimiento
+- ✅ Menos uso de memoria
+- ✅ Sin advertencias de deprecación
+- ✅ Compatibilidad mejorada
+
 ## 🔧 Problemas Comunes y Soluciones
 
 ### 1. "No se encontraron navegadores Chrome/Chromium"

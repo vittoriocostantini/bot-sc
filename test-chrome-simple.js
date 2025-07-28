@@ -19,7 +19,7 @@ async function testChromeSimple() {
     log.info('1. Iniciando Chrome con Puppeteer...');
     
     browser = await puppeteer.launch({
-      headless: true,
+      headless: 'new', // Nuevo modo headless
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
