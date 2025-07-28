@@ -17,7 +17,7 @@ const log = {
 };
 
 class SimplyCodesLinuxTester {
-  constructor(coupon, percentage) {
+  constructor(coupon, percentage, useExistingChrome = false) {
     this.browser = null;
     this.page = null;
     this.retryCount = 0;
@@ -30,6 +30,7 @@ class SimplyCodesLinuxTester {
     this.percentageIncrementCount = 0;
     this.chromeProcess = null;
     this.chromePath = null;
+    this.useExistingChrome = useExistingChrome; // Nueva opción
   }
 
   // ===== DETECCIÓN DE NAVEGADORES EN LINUX =====
@@ -531,9 +532,67 @@ class SimplyCodesLinuxTester {
     }
   }
 
+  async connectToExistingChrome() {
+    try {
+      log.info('Intentando conectar a Chrome existente...');
+      
+      // Verificar si hay un Chrome ejecutándose con puerto de debug
+      const debugAvailable = await this.checkDebugPort();
+      if (debugAvailable) {
+        log.success('Chrome existente encontrado en puerto 9222');
+        
+        try {
+          this.browser = await puppeteer.connect({
+            browserURL: 'http://localhost:9222',
+            defaultViewport: null,
+            protocolTimeout: 600000,
+            ignoreHTTPSErrors: true
+          });
+          
+          const version = await this.browser.version();
+          log.success(`Conectado a Chrome existente - Versión: ${version}`);
+          
+          // Obtener páginas existentes o crear una nueva
+          const pages = await this.browser.pages();
+          this.page = pages.length > 0 ? pages[0] : await this.browser.newPage();
+          
+          this.page.setDefaultTimeout(60000);
+          this.page.setDefaultNavigationTimeout(60000);
+          
+          log.success('Conectado exitosamente a Chrome existente');
+          return true;
+          
+        } catch (connectError) {
+          log.error('Error al conectar a Chrome existente:', connectError.message);
+          return false;
+        }
+      } else {
+        log.info('No se encontró Chrome con puerto de debug abierto');
+        log.info('Para usar Chrome existente, inicia Chrome con:');
+        log.info('google-chrome --remote-debugging-port=9222');
+        return false;
+      }
+      
+    } catch (error) {
+      log.error('Error al conectar a Chrome existente:', error.message);
+      return false;
+    }
+  }
+
   async ensureChromeRunning() {
     try {
       log.info('Verificando si Chrome está ejecutándose...');
+      
+      // Si se solicita usar Chrome existente, intentar conectar primero
+      if (this.useExistingChrome) {
+        log.info('Intentando conectar a Chrome existente...');
+        if (await this.connectToExistingChrome()) {
+          log.success('Conectado a Chrome existente exitosamente');
+          return true;
+        } else {
+          log.warning('No se pudo conectar a Chrome existente, usando método alternativo...');
+        }
+      }
       
       const debugPortAvailable = await this.checkDebugPort();
       if (debugPortAvailable) {
@@ -585,9 +644,9 @@ class SimplyCodesLinuxTester {
       
       log.info('Configurando argumentos de Chrome...');
       
-      // Lanzar Chrome con Puppeteer (nuevo modo headless)
+      // Lanzar Chrome con Puppeteer (modo visible para ver la navegación)
       this.browser = await puppeteer.launch({
-        headless: 'new', // Nuevo modo headless
+        headless: false, // Cambiar a false para ver la navegación
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -1189,10 +1248,11 @@ async function runTest() {
   
   let coupon = process.env.COUPON;
   let percentage = process.env.PERCENTAGE;
+  let useExistingChrome = process.env.USE_EXISTING_CHROME === 'true';
   let answers;
   
   if (coupon && percentage) {
-    answers = { coupon, percentage };
+    answers = { coupon, percentage, useExistingChrome };
   } else {
     answers = await inquirer.prompt([
       {
@@ -1208,11 +1268,38 @@ async function runTest() {
         message: 'Ingresa el porcentaje de descuento (solo números):',
         default: '25',
         validate: v => /^\d+$/.test(v)
+      },
+      {
+        type: 'list',
+        name: 'chromeMode',
+        message: '¿Cómo quieres usar Chrome?',
+        choices: [
+          {
+            name: 'Crear nuevo Chrome (recomendado)',
+            value: 'new'
+          },
+          {
+            name: 'Usar Chrome existente (debes iniciarlo manualmente)',
+            value: 'existing'
+          }
+        ],
+        default: 'new'
       }
     ]);
+    
+    useExistingChrome = answers.chromeMode === 'existing';
   }
   
-  globalTester = new SimplyCodesLinuxTester(answers.coupon, answers.percentage);
+  if (useExistingChrome) {
+    log.info('Modo: Usar Chrome existente');
+    log.info('Para usar Chrome existente, inicia Chrome con:');
+    log.info('google-chrome --remote-debugging-port=9222');
+    log.info('Luego ejecuta este script nuevamente');
+  } else {
+    log.info('Modo: Crear nuevo Chrome (visible)');
+  }
+  
+  globalTester = new SimplyCodesLinuxTester(answers.coupon, answers.percentage, useExistingChrome);
   
   try {
     await globalTester.testPage();
