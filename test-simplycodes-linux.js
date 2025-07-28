@@ -580,6 +580,11 @@ class SimplyCodesLinuxTester {
       // Limpiar procesos anteriores
       await this.cleanupChromeProcesses();
       
+      // Esperar un momento para asegurar limpieza
+      await this.wait(2000);
+      
+      log.info('Configurando argumentos de Chrome...');
+      
       // Lanzar Chrome con Puppeteer (nuevo modo headless)
       this.browser = await puppeteer.launch({
         headless: 'new', // Nuevo modo headless
@@ -645,21 +650,52 @@ class SimplyCodesLinuxTester {
         env: { 
           ...process.env, 
           DISPLAY: process.env.DISPLAY || ':0'
-        }
+        },
+        timeout: 60000, // 60 segundos de timeout
+        protocolTimeout: 60000,
+        ignoreHTTPSErrors: true
       });
       
+      log.success('Chrome iniciado con Puppeteer');
+      
+      // Verificar que el browser está funcionando
+      log.info('Verificando conexión al browser...');
+      const version = await this.browser.version();
+      log.success(`Versión de Chrome: ${version}`);
+      
       // Obtener página
+      log.info('Creando nueva página...');
       this.page = await this.browser.newPage();
       
       // Configurar timeouts
       this.page.setDefaultTimeout(60000);
       this.page.setDefaultNavigationTimeout(60000);
       
+      // Verificar que la página funciona
+      log.info('Verificando que la página funciona...');
+      await this.page.setViewport({ width: 1280, height: 720 });
+      
+      log.success('Página configurada correctamente');
       log.success('Chrome iniciado con Puppeteer exitosamente');
       return true;
       
     } catch (error) {
       log.error('Error al iniciar Chrome con Puppeteer:', error.message);
+      
+      // Información adicional de diagnóstico
+      try {
+        const { stdout: memInfo } = await execAsync('free -h');
+        log.info('Memoria disponible:', memInfo);
+        
+        const { stdout: chromeProcesses } = await execAsync('ps aux | grep -i chrome | grep -v grep || echo "No procesos de Chrome encontrados"');
+        log.info('Procesos de Chrome:', chromeProcesses);
+        
+        const { stdout: portInfo } = await execAsync('netstat -tlnp 2>/dev/null | grep :9222 || echo "Puerto 9222 no encontrado"');
+        log.info('Puerto 9222:', portInfo);
+      } catch (diagError) {
+        log.error('Error al obtener información de diagnóstico:', diagError.message);
+      }
+      
       return false;
     }
   }
@@ -667,15 +703,92 @@ class SimplyCodesLinuxTester {
   // ===== MÉTODOS DE SIMPLYCODES (IGUAL QUE EL ORIGINAL) =====
   
   async navigateToSimplyCodes() {
-    log.info('Navegando a SimplyCodes...');
-    
-    await this.page.goto('https://simplycodes.com/editor/add/fitzgerald', {
-      waitUntil: 'networkidle2',
-      timeout: 30000
-    });
-    
-    log.success('Página cargada exitosamente');
-    await this.wait(1000);
+    try {
+      log.info('Navegando a SimplyCodes...');
+      
+      // Verificar que la página está disponible
+      if (!this.page) {
+        log.error('Página no disponible');
+        return false;
+      }
+      
+      // Verificar que el browser está conectado
+      try {
+        await this.browser.version();
+        log.success('Browser conectado correctamente');
+      } catch (e) {
+        log.error('Browser no responde, intentando reconectar...');
+        return false;
+      }
+      
+      // Intentar navegar con reintentos
+      const maxRetries = 3;
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          log.info(`Intento ${attempt}/${maxRetries} de navegación...`);
+          
+          await this.page.goto('https://simplycodes.com/editor/add/fitzgerald', {
+            waitUntil: 'networkidle2',
+            timeout: 30000
+          });
+          
+          // Verificar que la página cargó correctamente
+          const title = await this.page.title();
+          log.success(`Página cargada exitosamente - Título: ${title}`);
+          
+          // Verificar que estamos en la página correcta
+          const url = this.page.url();
+          if (url.includes('simplycodes.com')) {
+            log.success('URL verificada correctamente');
+            await this.wait(2000);
+            return true;
+          } else {
+            log.warning(`URL inesperada: ${url}`);
+            if (attempt < maxRetries) {
+              log.info('Reintentando...');
+              await this.wait(3000);
+            }
+          }
+          
+        } catch (navigationError) {
+          log.error(`Error en intento ${attempt}:`, navigationError.message);
+          
+          if (attempt < maxRetries) {
+            log.info('Esperando antes del reintento...');
+            await this.wait(5000);
+            
+            // Intentar recargar la página
+            try {
+              await this.page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+              log.info('Página recargada');
+            } catch (reloadError) {
+              log.error('Error al recargar página:', reloadError.message);
+            }
+          } else {
+            log.error('Todos los intentos de navegación fallaron');
+            return false;
+          }
+        }
+      }
+      
+      return false;
+      
+    } catch (error) {
+      log.error('Error en navigateToSimplyCodes:', error.message);
+      
+      // Información de diagnóstico
+      try {
+        const { stdout: memInfo } = await execAsync('free -h');
+        log.info('Memoria disponible:', memInfo);
+        
+        const { stdout: chromeProcesses } = await execAsync('ps aux | grep -i chrome | grep -v grep || echo "No procesos de Chrome encontrados"');
+        log.info('Procesos de Chrome:', chromeProcesses);
+      } catch (diagError) {
+        log.error('Error al obtener información de diagnóstico:', diagError.message);
+      }
+      
+      return false;
+    }
   }
 
   async fillCouponCode() {

@@ -62,6 +62,84 @@ npm install puppeteer@latest
 - ✅ Sin advertencias de deprecación
 - ✅ Compatibilidad mejorada
 
+## 🔌 Problema de Conexión a Chrome
+
+Si ves estos errores:
+```
+Error al conectar al Chrome existente
+Error al iniciar Chrome con Puppeteer
+```
+
+**Síntomas:**
+- Chrome se abre correctamente
+- Puppeteer no puede conectarse al proceso
+- La navegación falla al intentar cargar páginas
+
+**Soluciones:**
+
+### A. Prueba de Conexión Específica
+```bash
+# Probar conexión completa
+node test-chrome-connection.js
+
+# Probar Chrome simple
+node test-chrome-simple.js
+```
+
+### B. Limpieza Completa
+```bash
+# Limpiar todo
+./cleanup-chrome.sh
+
+# Esperar un momento
+sleep 5
+
+# Probar de nuevo
+node test-chrome-connection.js
+```
+
+### C. Verificar Configuración del Sistema
+```bash
+# Verificar memoria
+free -h
+
+# Verificar procesos de Chrome
+ps aux | grep -i chrome
+
+# Verificar puertos
+netstat -tlnp | grep :9222
+
+# Verificar display
+echo $DISPLAY
+```
+
+### D. Configuración de Memoria
+Si tienes poca memoria disponible:
+```bash
+# Limpiar memoria cache
+sudo sync && sudo echo 3 > /proc/sys/vm/drop_caches
+
+# Aumentar swap si es necesario
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+```
+
+### E. Configuración de Display
+Para entornos headless:
+```bash
+# Instalar Xvfb
+sudo apt install xvfb
+
+# Iniciar display virtual
+Xvfb :99 -screen 0 1024x768x24 &
+export DISPLAY=:99
+
+# Ejecutar prueba
+node test-chrome-connection.js
+```
+
 ## 🔧 Problemas Comunes y Soluciones
 
 ### 1. "No se encontraron navegadores Chrome/Chromium"
