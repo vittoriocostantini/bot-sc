@@ -107,34 +107,70 @@ class SimplyCodesLinuxTester {
   async setupSystem() {
     log.info('Configurando sistema para Linux...');
     
-    // Verificar DISPLAY
-    if (!process.env.DISPLAY) {
-      log.warning('Variable DISPLAY no configurada');
-      log.info('Intentando configurar DISPLAY automáticamente...');
+    // Verificar si estamos en un entorno headless
+    const isHeadless = !process.env.DISPLAY || process.env.DISPLAY === '';
+    
+    if (isHeadless) {
+      log.warning('Ejecutando en modo headless');
+      log.info('Configurando entorno virtual...');
       
       try {
-        // Buscar displays disponibles
-        const { stdout } = await execAsync('w -h | grep -o ":[0-9]*" | head -1');
-        if (stdout.trim()) {
-          process.env.DISPLAY = stdout.trim();
-          log.success(`DISPLAY configurado: ${process.env.DISPLAY}`);
+        // Intentar configurar Xvfb si está disponible
+        const { stdout: xvfbCheck } = await execAsync('which Xvfb 2>/dev/null || echo ""');
+        if (xvfbCheck.trim()) {
+          log.info('Xvfb encontrado, configurando display virtual...');
+          
+          // Iniciar Xvfb en background
+          const xvfbProcess = spawn('Xvfb', [':99', '-screen', '0', '1024x768x24'], {
+            detached: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+          });
+          
+          await this.wait(2000);
+          process.env.DISPLAY = ':99';
+          log.success('Display virtual configurado: :99');
         } else {
+          log.warning('Xvfb no encontrado, usando DISPLAY=:0');
           process.env.DISPLAY = ':0';
-          log.info('Usando DISPLAY=:0 por defecto');
         }
       } catch (e) {
+        log.warning('No se pudo configurar display virtual, usando :0');
         process.env.DISPLAY = ':0';
-        log.info('Usando DISPLAY=:0 por defecto');
       }
+    } else {
+      log.success(`DISPLAY configurado: ${process.env.DISPLAY}`);
+    }
+
+    // Verificar que el display funciona
+    try {
+      const { stdout: xdpyinfo } = await execAsync('xdpyinfo -display ${process.env.DISPLAY} 2>/dev/null || echo "Display no disponible"');
+      if (xdpyinfo.includes('Display no disponible')) {
+        log.warning('Display no disponible, intentando configuración alternativa...');
+        process.env.DISPLAY = ':0';
+      }
+    } catch (e) {
+      log.info('No se pudo verificar display, continuando...');
     }
 
     // Verificar permisos de /tmp
     try {
       await execAsync('touch /tmp/chrome-debug-test');
       await execAsync('rm /tmp/chrome-debug-test');
+      log.success('Permisos de /tmp verificados');
     } catch (error) {
       log.error('Sin permisos de escritura en /tmp');
       throw new Error('No write permission in /tmp');
+    }
+
+    // Verificar dependencias necesarias
+    const dependencies = ['curl', 'ps', 'netstat', 'free'];
+    for (const dep of dependencies) {
+      try {
+        await execAsync(`which ${dep}`);
+        log.info(`✓ ${dep} disponible`);
+      } catch (e) {
+        log.warning(`⚠ ${dep} no encontrado`);
+      }
     }
 
     // Verificar memoria disponible
@@ -165,6 +201,21 @@ class SimplyCodesLinuxTester {
     } catch (e) {
       log.info('No se pudo verificar espacio en disco');
     }
+
+    // Verificar puerto 9222
+    try {
+      const { stdout: portCheck } = await execAsync('netstat -tlnp 2>/dev/null | grep :9222 || echo "Puerto libre"');
+      if (portCheck.includes('9222')) {
+        log.warning('Puerto 9222 ya está en uso');
+        log.info('Intentando liberar puerto...');
+        await execAsync('pkill -f "chrome.*9222" 2>/dev/null || true');
+        await this.wait(2000);
+      }
+    } catch (e) {
+      log.info('No se pudo verificar puerto 9222');
+    }
+
+    log.success('Configuración del sistema completada');
   }
 
   // ===== INICIO DE CHROME OPTIMIZADO PARA LINUX =====
@@ -179,7 +230,7 @@ class SimplyCodesLinuxTester {
       // Crear directorio temporal
       await execAsync('mkdir -p /tmp/chrome-debug-linux');
       
-      // Construir comando de Chrome optimizado
+      // Construir comando de Chrome optimizado (sin duplicados)
       const chromeArgs = [
         '--remote-debugging-port=9222',
         '--user-data-dir=/tmp/chrome-debug-linux',
@@ -209,7 +260,6 @@ class SimplyCodesLinuxTester {
         '--disable-features=TranslateUI',
         '--disable-ipc-flooding-protection',
         '--disable-features=VizDisplayCompositor',
-        '--disable-sandbox',
         '--disable-setuid-sandbox',
         '--disable-accelerated-2d-canvas',
         '--disable-accelerated-jpeg-decoding',
@@ -219,9 +269,7 @@ class SimplyCodesLinuxTester {
         '--disable-gpu-sandbox',
         '--no-first-run',
         '--no-default-browser-check',
-        '--disable-default-apps',
         '--disable-popup-blocking',
-        '--disable-prompt-on-repost',
         '--disable-background-timer-throttling',
         '--disable-renderer-backgrounding',
         '--disable-backgrounding-occluded-windows',
@@ -245,27 +293,62 @@ class SimplyCodesLinuxTester {
         '--max_old_space_size=4096'
       ];
 
-      const launchCmd = `${this.chromePath} ${chromeArgs.join(' ')}`;
-      
+      // Verificar que Chrome existe
+      if (!this.chromePath) {
+        log.error('Ruta de Chrome no configurada');
+        return false;
+      }
+
+      // Verificar permisos de ejecución
+      try {
+        await execAsync(`test -x "${this.chromePath}"`);
+      } catch (e) {
+        log.error(`Chrome no tiene permisos de ejecución: ${this.chromePath}`);
+        return false;
+      }
+
       log.info('Lanzando Chrome con argumentos optimizados...');
+      log.info(`Comando: ${this.chromePath} ${chromeArgs.slice(0, 5).join(' ')}...`);
       
-      // Lanzar Chrome en background
+      // Lanzar Chrome en background con mejor manejo de errores
       this.chromeProcess = spawn(this.chromePath, chromeArgs, {
         detached: true,
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, DISPLAY: process.env.DISPLAY }
+        env: { 
+          ...process.env, 
+          DISPLAY: process.env.DISPLAY || ':0',
+          CHROME_DEVEL_SANDBOX: '/usr/lib/chromium/chrome-sandbox'
+        }
       });
+
+      // Verificar que el proceso se inició correctamente
+      if (!this.chromeProcess.pid) {
+        log.error('No se pudo iniciar el proceso de Chrome');
+        return false;
+      }
 
       // Guardar PID
       await execAsync(`echo ${this.chromeProcess.pid} > /tmp/chrome-linux.pid`);
       
       log.info(`Chrome iniciado con PID: ${this.chromeProcess.pid}`);
       
+      // Esperar un momento antes de verificar el puerto
+      await this.wait(3000);
+      
       // Esperar a que el puerto esté disponible
       return await this.waitForDebugPort();
       
     } catch (error) {
       log.error('Error al iniciar Chrome:', error.message);
+      
+      // Intentar obtener más información del error
+      try {
+        const { stdout: errorLog } = await execAsync('journalctl -u chrome --no-pager -n 10 2>/dev/null || echo "No logs disponibles"');
+        log.info('Logs del sistema:', errorLog);
+      } catch (e) {
+        log.info('No se pudieron obtener logs del sistema');
+      }
+      
       return false;
     }
   }
@@ -357,22 +440,75 @@ class SimplyCodesLinuxTester {
       const debugAvailable = await this.checkDebugPort();
       if (!debugAvailable) {
         log.error('Puerto de debug 9222 no disponible');
-        return false;
+        log.info('Verificando estado del proceso de Chrome...');
+        
+        try {
+          const { stdout: pidContent } = await execAsync('cat /tmp/chrome-linux.pid 2>/dev/null || echo ""');
+          if (pidContent.trim()) {
+            const pid = parseInt(pidContent.trim());
+            const { stdout: processCheck } = await execAsync(`ps -p ${pid} -o pid= 2>/dev/null || echo ""`);
+            if (processCheck.trim()) {
+              log.info(`Proceso de Chrome ejecutándose con PID: ${pid}`);
+              log.info('Esperando a que el puerto esté disponible...');
+              await this.wait(5000);
+              
+              // Reintentar verificación del puerto
+              if (await this.checkDebugPort()) {
+                log.success('Puerto de debug ahora disponible');
+              } else {
+                log.error('Puerto de debug sigue sin estar disponible');
+                return false;
+              }
+            } else {
+              log.error('Proceso de Chrome no encontrado');
+              return false;
+            }
+          } else {
+            log.error('No se encontró PID de Chrome');
+            return false;
+          }
+        } catch (e) {
+          log.error('Error al verificar proceso de Chrome:', e.message);
+          return false;
+        }
       }
+      
+      // Intentar conexión con timeout extendido
+      log.info('Iniciando conexión a Chrome...');
       
       this.browser = await puppeteer.connect({
         browserURL: 'http://localhost:9222',
         defaultViewport: null,
-        protocolTimeout: 300000
+        protocolTimeout: 600000, // 10 minutos
+        ignoreHTTPSErrors: true
       });
       
+      // Verificar que la conexión fue exitosa
+      const version = await this.browser.version();
+      log.success(`Chrome conectado exitosamente - Versión: ${version}`);
+      
+      // Obtener páginas existentes o crear una nueva
       const pages = await this.browser.pages();
       this.page = pages.length > 0 ? pages[0] : await this.browser.newPage();
       
-      log.success('Chrome conectado exitosamente');
+      // Configurar timeouts de la página
+      this.page.setDefaultTimeout(60000);
+      this.page.setDefaultNavigationTimeout(60000);
+      
+      log.success('Página configurada y lista para usar');
       return true;
+      
     } catch (error) {
       log.error('Error de conexión a Chrome:', error.message);
+      
+      // Intentar obtener más información del error
+      try {
+        const { stdout: chromeLogs } = await execAsync('tail -n 20 /tmp/chrome-debug-linux/chrome_debug.log 2>/dev/null || echo "No logs disponibles"');
+        log.info('Logs de Chrome:', chromeLogs);
+      } catch (e) {
+        log.info('No se pudieron obtener logs de Chrome');
+      }
+      
       return false;
     }
   }
@@ -841,4 +977,4 @@ async function runTest() {
   }
 }
 
-runTest(); 
+runTest();
