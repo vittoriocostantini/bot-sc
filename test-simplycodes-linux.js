@@ -437,6 +437,12 @@ class SimplyCodesLinuxTester {
     try {
       log.info('Conectando a Chrome...');
       
+      // Si ya tenemos un browser de Puppeteer, no necesitamos conectar
+      if (this.browser && this.page) {
+        log.success('Chrome ya está conectado via Puppeteer');
+        return true;
+      }
+      
       const debugAvailable = await this.checkDebugPort();
       if (!debugAvailable) {
         log.error('Puerto de debug 9222 no disponible');
@@ -457,46 +463,57 @@ class SimplyCodesLinuxTester {
                 log.success('Puerto de debug ahora disponible');
               } else {
                 log.error('Puerto de debug sigue sin estar disponible');
-                return false;
+                log.info('Intentando método alternativo con Puppeteer...');
+                return await this.startChromeWithPuppeteer();
               }
             } else {
               log.error('Proceso de Chrome no encontrado');
-              return false;
+              log.info('Intentando método alternativo con Puppeteer...');
+              return await this.startChromeWithPuppeteer();
             }
           } else {
             log.error('No se encontró PID de Chrome');
-            return false;
+            log.info('Intentando método alternativo con Puppeteer...');
+            return await this.startChromeWithPuppeteer();
           }
         } catch (e) {
           log.error('Error al verificar proceso de Chrome:', e.message);
-          return false;
+          log.info('Intentando método alternativo con Puppeteer...');
+          return await this.startChromeWithPuppeteer();
         }
       }
       
       // Intentar conexión con timeout extendido
       log.info('Iniciando conexión a Chrome...');
       
-      this.browser = await puppeteer.connect({
-        browserURL: 'http://localhost:9222',
-        defaultViewport: null,
-        protocolTimeout: 600000, // 10 minutos
-        ignoreHTTPSErrors: true
-      });
-      
-      // Verificar que la conexión fue exitosa
-      const version = await this.browser.version();
-      log.success(`Chrome conectado exitosamente - Versión: ${version}`);
-      
-      // Obtener páginas existentes o crear una nueva
-      const pages = await this.browser.pages();
-      this.page = pages.length > 0 ? pages[0] : await this.browser.newPage();
-      
-      // Configurar timeouts de la página
-      this.page.setDefaultTimeout(60000);
-      this.page.setDefaultNavigationTimeout(60000);
-      
-      log.success('Página configurada y lista para usar');
-      return true;
+      try {
+        this.browser = await puppeteer.connect({
+          browserURL: 'http://localhost:9222',
+          defaultViewport: null,
+          protocolTimeout: 600000, // 10 minutos
+          ignoreHTTPSErrors: true
+        });
+        
+        // Verificar que la conexión fue exitosa
+        const version = await this.browser.version();
+        log.success(`Chrome conectado exitosamente - Versión: ${version}`);
+        
+        // Obtener páginas existentes o crear una nueva
+        const pages = await this.browser.pages();
+        this.page = pages.length > 0 ? pages[0] : await this.browser.newPage();
+        
+        // Configurar timeouts de la página
+        this.page.setDefaultTimeout(60000);
+        this.page.setDefaultNavigationTimeout(60000);
+        
+        log.success('Página configurada y lista para usar');
+        return true;
+        
+      } catch (connectError) {
+        log.error('Error al conectar a Chrome existente:', connectError.message);
+        log.info('Intentando método alternativo con Puppeteer...');
+        return await this.startChromeWithPuppeteer();
+      }
       
     } catch (error) {
       log.error('Error de conexión a Chrome:', error.message);
@@ -509,25 +526,142 @@ class SimplyCodesLinuxTester {
         log.info('No se pudieron obtener logs de Chrome');
       }
       
-      return false;
+      log.info('Intentando método alternativo con Puppeteer...');
+      return await this.startChromeWithPuppeteer();
     }
   }
 
   async ensureChromeRunning() {
-    const debugPortAvailable = await this.checkDebugPort();
-    if (debugPortAvailable) {
-      log.success('Chrome ya está ejecutándose en modo debug');
+    try {
+      log.info('Verificando si Chrome está ejecutándose...');
+      
+      const debugPortAvailable = await this.checkDebugPort();
+      if (debugPortAvailable) {
+        log.success('Chrome ya está ejecutándose en modo debug');
+        return true;
+      }
+      
+      log.info('Chrome no está ejecutándose, iniciando proceso de inicialización...');
+      
+      // Detectar y seleccionar navegador
+      log.info('Paso 1: Detectando navegador...');
+      await this.selectBestBrowser();
+      
+      // Configurar sistema
+      log.info('Paso 2: Configurando sistema...');
+      await this.setupSystem();
+      
+      // Iniciar Chrome
+      log.info('Paso 3: Iniciando Chrome...');
+      const chromeStarted = await this.startChromeLinux();
+      
+      if (!chromeStarted) {
+        log.error('Falló al iniciar Chrome');
+        log.info('Intentando método alternativo...');
+        
+        // Método alternativo: usar Puppeteer directamente
+        return await this.startChromeWithPuppeteer();
+      }
+      
+      log.success('Chrome iniciado exitosamente');
       return true;
+      
+    } catch (error) {
+      log.error('Error en ensureChromeRunning:', error.message);
+      log.info('Intentando método alternativo con Puppeteer...');
+      return await this.startChromeWithPuppeteer();
     }
-    
-    // Detectar y seleccionar navegador
-    await this.selectBestBrowser();
-    
-    // Configurar sistema
-    await this.setupSystem();
-    
-    // Iniciar Chrome
-    return await this.startChromeLinux();
+  }
+
+  async startChromeWithPuppeteer() {
+    try {
+      log.info('Iniciando Chrome usando Puppeteer directamente...');
+      
+      // Limpiar procesos anteriores
+      await this.cleanupChromeProcesses();
+      
+      // Lanzar Chrome con Puppeteer
+      this.browser = await puppeteer.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-default-apps',
+          '--disable-sync',
+          '--disable-translate',
+          '--disable-logging',
+          '--disable-background-networking',
+          '--disable-component-update',
+          '--disable-client-side-phishing-detection',
+          '--disable-hang-monitor',
+          '--disable-prompt-on-repost',
+          '--disable-domain-reliability',
+          '--disable-features=AudioServiceOutOfProcess',
+          '--memory-pressure-off',
+          '--max_old_space_size=4096',
+          '--disable-software-rasterizer',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+          '--disable-features=VizDisplayCompositor',
+          '--disable-accelerated-2d-canvas',
+          '--disable-accelerated-jpeg-decoding',
+          '--disable-accelerated-mjpeg-decode',
+          '--disable-accelerated-video-decode',
+          '--disable-accelerated-video-encode',
+          '--disable-gpu-sandbox',
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--disable-popup-blocking',
+          '--disable-background-timer-throttling',
+          '--disable-renderer-backgrounding',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+          '--disable-features=VizDisplayCompositor',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-default-apps',
+          '--disable-sync',
+          '--disable-translate',
+          '--disable-logging',
+          '--disable-background-networking',
+          '--disable-component-update',
+          '--disable-client-side-phishing-detection',
+          '--disable-hang-monitor',
+          '--disable-prompt-on-repost',
+          '--disable-domain-reliability',
+          '--disable-features=AudioServiceOutOfProcess',
+          '--memory-pressure-off',
+          '--max_old_space_size=4096'
+        ],
+        env: { 
+          ...process.env, 
+          DISPLAY: process.env.DISPLAY || ':0'
+        }
+      });
+      
+      // Obtener página
+      this.page = await this.browser.newPage();
+      
+      // Configurar timeouts
+      this.page.setDefaultTimeout(60000);
+      this.page.setDefaultNavigationTimeout(60000);
+      
+      log.success('Chrome iniciado con Puppeteer exitosamente');
+      return true;
+      
+    } catch (error) {
+      log.error('Error al iniciar Chrome con Puppeteer:', error.message);
+      return false;
+    }
   }
 
   // ===== MÉTODOS DE SIMPLYCODES (IGUAL QUE EL ORIGINAL) =====
