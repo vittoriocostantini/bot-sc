@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 const screen = blessed.screen({
   smartCSR: true,
   title: 'Bot de Cupones - SimplyCodes',
-  style: { bg: 'blue' }
+  style: { bg: 'black' }
 });
 
 // Crear box principal que ocupa toda la terminal
@@ -21,7 +21,7 @@ const mainBg = blessed.box({
   left: 0,
   width: '100%',
   height: '100%',
-  style: { bg: 'blue' },
+  style: { bg: 'black' },
 });
 
 screen.append(mainBg);
@@ -34,8 +34,8 @@ const menuBar = blessed.listbar({
   width: '100%',
   height: 3,
   style: {
-    bg: 'blue',
-    item: { bg: 'blue', fg: 'white', hover: { bg: 'cyan' } },
+    bg: 'black',
+    item: { bg: 'black', fg: 'white', hover: { bg: 'cyan' } },
     selected: { bg: 'cyan', fg: 'black' },
     border: { fg: 'white' }
   },
@@ -58,15 +58,15 @@ const form = blessed.box({
   width: 70,
   height: 11,
   border: { type: 'line' },
-  style: { bg: 'blue', border: { fg: 'white' } },
+  style: { bg: 'black', border: { fg: 'white' } },
 });
 
 const couponLabel = blessed.text({
   parent: form,
   top: 2,
   left: 3,
-  content: '010010101 01 001010101:',
-  style: { fg: 'yellow', bg: 'blue' },
+  content: 'INGRESE EL CODIGO:',
+  style: { fg: 'yellow', bg: 'black' },
 });
 
 const couponInput = blessed.textbox({
@@ -77,7 +77,7 @@ const couponInput = blessed.textbox({
   width: 40,
   height: 3,
   inputOnFocus: true,
-  style: { fg: 'white', bg: 'blue', focus: { bg: 'blue' } },
+  style: { fg: 'white', bg: 'black', focus: { bg: 'black' } },
   border: { type: 'line', fg: 'white' },
 });
 
@@ -85,8 +85,8 @@ const percentLabel = blessed.text({
   parent: form,
   top: 5,
   left: 3,
-  content: '011010101 00 0101010101:',
-  style: { fg: 'yellow', bg: 'blue' },
+  content: 'INGRESA EL PORCENTAJE:',
+  style: { fg: 'yellow', bg: 'black' },
 });
 
 const percentInput = blessed.textbox({
@@ -97,7 +97,7 @@ const percentInput = blessed.textbox({
   width: 12,
   height: 3,
   inputOnFocus: true,
-  style: { fg: 'white', bg: 'blue', focus: { bg: 'blue' } },
+  style: { fg: 'white', bg: 'black', focus: { bg: 'black' } },
   border: { type: 'line', fg: 'white' },
 });
 
@@ -112,7 +112,7 @@ const startButton = blessed.button({
   name: 'start',
   content: 'Iniciar',
   style: {
-    bg: 'blue',
+    bg: 'black',
     fg: 'black',
     focus: { bg: 'yellow', fg: 'black' },
     hover: { bg: 'yellow', fg: 'black' },
@@ -130,10 +130,10 @@ const logBox = blessed.log({
   height: '60%',
   label: 'Logs',
   border: { type: 'line' },
-  style: { fg: 'white', bg: 'blue', border: { fg: 'white' } },
+  style: { fg: 'white', bg: 'black', border: { fg: 'white' } },
   scrollable: true,
   alwaysScroll: true,
-  scrollbar: { bg: 'blue' },
+  scrollbar: { bg: 'black' },
 });
 
 // Menú inferior
@@ -143,7 +143,7 @@ const bottomBar = blessed.box({
   left: 0,
   width: '100%',
   height: 1,
-  style: { bg: 'blue', fg: 'white' },
+  style: { bg: 'black', fg: 'white' },
   content: ' F5 Iniciar | F10 Salir ',
 });
 
@@ -241,13 +241,13 @@ function iniciarBot(cupon, porcentaje) {
     env: { ...process.env, COUPON: cupon, PERCENTAGE: porcentaje, FORCE_COLOR: 0 },
     stdio: ['inherit', 'pipe', 'pipe']
   });
-  
+
   child.stdout.on('data', (data) => {
     const msg = limpiarAnsi(data.toString().replace(/\n$/, ''));
     logBox.log(msg);
     screen.render();
   });
-  
+
   child.stderr.on('data', (data) => {
     const errMsg = limpiarAnsi(data.toString().replace(/\n$/, ''));
     lastError = errMsg;
@@ -313,4 +313,4 @@ screen.key(['f10', 'q', 'C-c'], () => {
 iniciarLimpiezaAutomatica();
 
 couponInput.focus();
-screen.render(); 
+screen.render();
