@@ -1,15 +1,16 @@
-import puppeteer from 'puppeteer';
-import chalk from 'chalk';
-import inquirer from 'inquirer';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { resolve } from 'path';
-import { spawn } from 'child_process';
+import puppeteer from "puppeteer";
+import chalk from "chalk";
+import inquirer from "inquirer";
+import { exec } from "child_process";
+import { promisify } from "util";
+import { resolve } from "path";
+import { spawn } from "child_process";
 
 const execAsync = promisify(exec);
 
 const log = {
-  info: (msg) => console.log(chalk.hex('#FFFFFF').bgBlack.bold(`[INFO] ${msg}`)),
+  info: (msg) =>
+    console.log(chalk.hex("#FFFFFF").bgBlack.bold(`[INFO] ${msg}`)),
   success: (msg) => console.log(chalk.green.bold.bgBlack(`[SUCCESS] ${msg}`)),
   error: (msg) => console.log(chalk.red.bold.bgBlack(`[ERROR] ${msg}`)),
 };
@@ -33,11 +34,12 @@ class SimplyCodesTester {
   async checkChromeRunning() {
     try {
       let cmd;
-      if (process.platform === 'darwin') {
+      if (process.platform === "darwin") {
         cmd = 'ps aux | grep -i "Google Chrome" | grep -v grep';
-      } else if (process.platform === 'linux') {
+      } else if (process.platform === "linux") {
         // Busca chrome, google-chrome o chromium
-        cmd = 'ps aux | grep -E "(chrome|google-chrome|chromium)" | grep -v grep';
+        cmd =
+          'ps aux | grep -E "(chrome|google-chrome|chromium)" | grep -v grep';
       } else {
         cmd = 'ps aux | grep -i "chrome" | grep -v grep';
       }
@@ -50,8 +52,10 @@ class SimplyCodesTester {
 
   async checkDebugPort() {
     try {
-      const { stdout } = await execAsync('curl -s http://localhost:9222/json/version');
-      return stdout.includes('Chrome');
+      const { stdout } = await execAsync(
+        "curl -s http://localhost:9222/json/version"
+      );
+      return stdout.includes("Chrome");
     } catch {
       return false;
     }
@@ -68,17 +72,17 @@ class SimplyCodesTester {
       }
     }
 
-    if (process.platform === 'darwin') {
+    if (process.platform === "darwin") {
       // Usar 'open' para macOS
       return 'open -a "Google Chrome" --args';
-    } else if (process.platform === 'linux') {
+    } else if (process.platform === "linux") {
       // En Linux, probar diferentes nombres de Chrome/Chromium
       const possibleCommands = [
-        'google-chrome',
-        'google-chrome-stable',
-        'chromium',
-        'chromium-browser',
-        'chrome'
+        "google-chrome",
+        "google-chrome-stable",
+        "chromium",
+        "chromium-browser",
+        "chrome",
       ];
 
       // Retornar el primer comando disponible
@@ -93,28 +97,28 @@ class SimplyCodesTester {
       }
 
       // Si no se encuentra ninguno, mostrar error
-      log.error('No Chrome/Chromium installation found');
-      log.error('Please install Google Chrome or Chromium');
-      throw new Error('Chrome not found');
+      log.error("No Chrome/Chromium installation found");
+      log.error("Please install Google Chrome or Chromium");
+      throw new Error("Chrome not found");
     } else {
-      throw new Error('Unsupported OS for Chrome automation');
+      throw new Error("Unsupported OS for Chrome automation");
     }
   }
 
   async startChromeWithDebugging() {
     try {
-      log.info('|    Chrome Debug Mode Starting...    |');
+      log.info("|    Chrome Debug Mode Starting...    |");
 
       // En antiX, usar un enfoque más simple y directo
-      if (process.platform === 'linux') {
+      if (process.platform === "linux") {
         return await this.startChromeSimple();
       }
 
       // Para macOS, mantener el método original
       // Limpiar directorio temporal de Chrome si existe
       try {
-        await execAsync('rm -rf /tmp/chrome-debug');
-        log.info('|    Cleaned Chrome debug directory |');
+        await execAsync("rm -rf /tmp/chrome-debug");
+        log.info("|    Cleaned Chrome debug directory |");
       } catch (e) {
         // Ignorar errores si el directorio no existe
       }
@@ -130,22 +134,22 @@ class SimplyCodesTester {
 
       return await this.waitForDebugPort();
     } catch (error) {
-      log.error('Chrome startup error:', error.message);
+      log.error("Chrome startup error:", error.message);
       return false;
     }
   }
 
   async startChromeSimple() {
     try {
-      log.info('|    Using simple Chrome launch for antiX... |');
+      log.info("|    Using simple Chrome launch for antiX... |");
 
       // Limpiar completamente
       try {
-        await execAsync('rm -rf /tmp/chrome-debug');
-        await execAsync('killall chrome 2>/dev/null || true');
-        await execAsync('killall google-chrome 2>/dev/null || true');
-        await execAsync('killall chromium 2>/dev/null || true');
-        await execAsync('killall chromium-browser 2>/dev/null || true');
+        await execAsync("rm -rf /tmp/chrome-debug");
+        await execAsync("killall chrome 2>/dev/null || true");
+        await execAsync("killall google-chrome 2>/dev/null || true");
+        await execAsync("killall chromium 2>/dev/null || true");
+        await execAsync("killall chromium-browser 2>/dev/null || true");
         await this.wait(3000);
       } catch (e) {
         // Ignorar errores
@@ -157,7 +161,7 @@ class SimplyCodesTester {
 
       // Crear script de lanzamiento temporal
       const launchScript = `#!/bin/bash
-export DISPLAY=${process.env.DISPLAY || ':0'}
+export DISPLAY=${process.env.DISPLAY || ":0"}
 cd /tmp
 ${chromeCmd} --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu --disable-dev-shm-usage --disable-web-security --disable-extensions --disable-plugins --disable-default-apps --disable-sync --disable-translate --disable-logging --disable-background-networking --disable-component-update --disable-client-side-phishing-detection --disable-hang-monitor --disable-prompt-on-repost --disable-domain-reliability --disable-features=AudioServiceOutOfProcess --memory-pressure-off --max_old_space_size=4096 --disable-software-rasterizer --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-ipc-flooding-protection --disable-features=VizDisplayCompositor --disable-sandbox --disable-setuid-sandbox --disable-dev-shm-usage --disable-accelerated-2d-canvas --disable-accelerated-jpeg-decoding --disable-accelerated-mjpeg-decode --disable-accelerated-video-decode --disable-accelerated-video-encode --disable-gpu-sandbox --disable-software-rasterizer --disable-background-timer-throttling --disable-backgrounding-occluded-windows --disable-renderer-backgrounding --disable-features=TranslateUI --disable-ipc-flooding-protection --disable-features=VizDisplayCompositor --disable-extensions --disable-plugins --disable-default-apps --disable-sync --disable-translate --disable-logging --disable-background-networking --disable-component-update --disable-client-side-phishing-detection --disable-hang-monitor --disable-prompt-on-repost --disable-domain-reliability --disable-features=AudioServiceOutOfProcess --memory-pressure-off --max_old_space_size=4096 > /tmp/chrome.log 2>&1 &
 echo $! > /tmp/chrome.pid
@@ -165,112 +169,123 @@ echo $! > /tmp/chrome.pid
 
       // Escribir script temporal
       await execAsync('echo "' + launchScript + '" > /tmp/launch-chrome.sh');
-      await execAsync('chmod +x /tmp/launch-chrome.sh');
+      await execAsync("chmod +x /tmp/launch-chrome.sh");
 
-      log.info('|    Launching Chrome with script... |');
-      await execAsync('/tmp/launch-chrome.sh');
+      log.info("|    Launching Chrome with script... |");
+      await execAsync("/tmp/launch-chrome.sh");
 
       // Esperar y verificar proceso
-      log.info('|    Waiting for Chrome to start... |');
+      log.info("|    Waiting for Chrome to start... |");
       await this.wait(8000);
 
       // Verificar PID del proceso
       try {
-        const { stdout: pidContent } = await execAsync('cat /tmp/chrome.pid 2>/dev/null || echo ""');
+        const { stdout: pidContent } = await execAsync(
+          'cat /tmp/chrome.pid 2>/dev/null || echo ""'
+        );
         if (pidContent.trim()) {
           const pid = parseInt(pidContent.trim());
           log.info(`|    Chrome PID: ${pid} |`);
 
           // Verificar que el proceso esté ejecutándose
-          const { stdout: processCheck } = await execAsync(`ps -p ${pid} -o pid= 2>/dev/null || echo ""`);
+          const { stdout: processCheck } = await execAsync(
+            `ps -p ${pid} -o pid= 2>/dev/null || echo ""`
+          );
           if (processCheck.trim()) {
-            log.success('|    Chrome process confirmed! |');
+            log.success("|    Chrome process confirmed! |");
           } else {
-            log.error('|    Chrome process not found |');
+            log.error("|    Chrome process not found |");
             return false;
           }
         } else {
-          log.error('|    Chrome PID file not found |');
+          log.error("|    Chrome PID file not found |");
           return false;
         }
       } catch (e) {
-        log.error('|    Could not verify Chrome process |');
+        log.error("|    Could not verify Chrome process |");
         return false;
       }
 
       // Verificar logs de Chrome
       try {
-        const { stdout: chromeLog } = await execAsync('tail -10 /tmp/chrome.log 2>/dev/null || echo "No log file"');
-        log.info('|    Chrome log:', chromeLog);
+        const { stdout: chromeLog } = await execAsync(
+          'tail -10 /tmp/chrome.log 2>/dev/null || echo "No log file"'
+        );
+        log.info("|    Chrome log:", chromeLog);
       } catch (e) {
-        log.info('|    Could not read Chrome log |');
+        log.info("|    Could not read Chrome log |");
       }
 
       // Esperar a que el puerto esté disponible
       return await this.waitForDebugPort();
-
     } catch (error) {
-      log.error('Simple Chrome launch failed:', error.message);
+      log.error("Simple Chrome launch failed:", error.message);
       return false;
     }
   }
 
-
-
   async waitForDebugPort() {
-    log.info('|    Waiting for Chrome debug port... |');
+    log.info("|    Waiting for Chrome debug port... |");
 
     // En antiX, usar un enfoque más específico
-    const maxAttempts = process.platform === 'linux' ? 30 : 15;
-    const waitTime = process.platform === 'linux' ? 2000 : 2000;
+    const maxAttempts = process.platform === "linux" ? 30 : 15;
+    const waitTime = process.platform === "linux" ? 2000 : 2000;
 
     for (let i = 0; i < maxAttempts; i++) {
       await this.wait(waitTime);
       log.info(`|    Attempt ${i + 1}/${maxAttempts}... |`);
 
       if (await this.checkDebugPort()) {
-        log.success('|   Chrome Debug Connected    |');
+        log.success("|   Chrome Debug Connected    |");
         return true;
       }
 
       // Verificar si el proceso de Chrome sigue ejecutándose usando PID
       try {
-        const { stdout: pidContent } = await execAsync('cat /tmp/chrome.pid 2>/dev/null || echo ""');
+        const { stdout: pidContent } = await execAsync(
+          'cat /tmp/chrome.pid 2>/dev/null || echo ""'
+        );
         if (pidContent.trim()) {
           const pid = parseInt(pidContent.trim());
-          const { stdout: processCheck } = await execAsync(`ps -p ${pid} -o pid= 2>/dev/null || echo ""`);
+          const { stdout: processCheck } = await execAsync(
+            `ps -p ${pid} -o pid= 2>/dev/null || echo ""`
+          );
           if (!processCheck.trim()) {
-            log.error('Chrome process died unexpectedly');
+            log.error("Chrome process died unexpectedly");
 
             // Verificar logs de Chrome
             try {
-              const { stdout: chromeLog } = await execAsync('tail -20 /tmp/chrome.log 2>/dev/null || echo "No log file"');
-              log.error('Chrome log (last 20 lines):', chromeLog);
+              const { stdout: chromeLog } = await execAsync(
+                'tail -20 /tmp/chrome.log 2>/dev/null || echo "No log file"'
+              );
+              log.error("Chrome log (last 20 lines):", chromeLog);
             } catch (e) {
-              log.error('Could not read Chrome log');
+              log.error("Could not read Chrome log");
             }
 
             return false;
           }
         } else {
-          log.error('Chrome PID file not found');
+          log.error("Chrome PID file not found");
           return false;
         }
       } catch (e) {
-        log.error('Could not check Chrome process');
+        log.error("Could not check Chrome process");
         return false;
       }
 
       // Cada 5 intentos, mostrar información adicional
       if (i % 5 === 0 && i > 0) {
         try {
-          const { stdout: memInfo } = await execAsync('free -m | grep Mem');
-          log.info('Memory usage:', memInfo);
+          const { stdout: memInfo } = await execAsync("free -m | grep Mem");
+          log.info("Memory usage:", memInfo);
 
-          const { stdout: portInfo } = await execAsync('netstat -tlnp 2>/dev/null | grep :9222 || echo "Port 9222 not found"');
-          log.info('Port 9222 status:', portInfo);
+          const { stdout: portInfo } = await execAsync(
+            'netstat -tlnp 2>/dev/null | grep :9222 || echo "Port 9222 not found"'
+          );
+          log.info("Port 9222 status:", portInfo);
         } catch (e) {
-          log.info('Could not get additional diagnostic info');
+          log.info("Could not get additional diagnostic info");
         }
       }
     }
@@ -279,16 +294,20 @@ echo $! > /tmp/chrome.pid
 
     // Información de diagnóstico final
     try {
-      const { stdout: portInfo } = await execAsync('netstat -tlnp 2>/dev/null | grep :9222 || echo "Port 9222 not found"');
-      log.error('Final port 9222 status:', portInfo);
+      const { stdout: portInfo } = await execAsync(
+        'netstat -tlnp 2>/dev/null | grep :9222 || echo "Port 9222 not found"'
+      );
+      log.error("Final port 9222 status:", portInfo);
 
-      const { stdout: chromeLog } = await execAsync('tail -30 /tmp/chrome.log 2>/dev/null || echo "No log file"');
-      log.error('Final Chrome log:', chromeLog);
+      const { stdout: chromeLog } = await execAsync(
+        'tail -30 /tmp/chrome.log 2>/dev/null || echo "No log file"'
+      );
+      log.error("Final Chrome log:", chromeLog);
 
-      const { stdout: memInfo } = await execAsync('free -h');
-      log.error('Final memory status:', memInfo);
+      const { stdout: memInfo } = await execAsync("free -h");
+      log.error("Final memory status:", memInfo);
     } catch (e) {
-      log.error('Could not get final diagnostic information');
+      log.error("Could not get final diagnostic information");
     }
 
     return false;
@@ -296,36 +315,38 @@ echo $! > /tmp/chrome.pid
 
   async connectToChrome() {
     try {
-      log.info('|    Connecting to Chrome...   |');
+      log.info("|    Connecting to Chrome...   |");
 
       // Verificar que el puerto esté disponible antes de conectar
       const debugAvailable = await this.checkDebugPort();
       if (!debugAvailable) {
-        log.error('Debug port 9222 not available');
+        log.error("Debug port 9222 not available");
         return false;
       }
 
       this.browser = await puppeteer.connect({
-        browserURL: 'http://localhost:9222',
+        browserURL: "http://localhost:9222",
         defaultViewport: null,
-        protocolTimeout: 300000 // 5 minutos
+        protocolTimeout: 300000, // 5 minutos
       });
 
       const pages = await this.browser.pages();
       this.page = pages.length > 0 ? pages[0] : await this.browser.newPage();
 
-      log.success('|   Chrome Connected          |');
+      log.success("|   Chrome Connected          |");
       return true;
     } catch (error) {
-      log.error('Chrome connection error:', error.message);
-      log.error('Error details:', error.stack);
+      log.error("Chrome connection error:", error.message);
+      log.error("Error details:", error.stack);
 
       // Intentar obtener más información sobre el estado del puerto
       try {
-        const { stdout } = await execAsync('curl -s http://localhost:9222/json/version');
-        log.info('Debug port response:', stdout);
+        const { stdout } = await execAsync(
+          "curl -s http://localhost:9222/json/version"
+        );
+        log.info("Debug port response:", stdout);
       } catch (curlError) {
-        log.error('Debug port not responding to curl');
+        log.error("Debug port not responding to curl");
       }
 
       return false;
@@ -335,37 +356,37 @@ echo $! > /tmp/chrome.pid
   async ensureChromeRunning() {
     const debugPortAvailable = await this.checkDebugPort();
     if (debugPortAvailable) {
-      log.success('Chrome is already running in debug mode');
+      log.success("Chrome is already running in debug mode");
       return true;
     }
 
     // En Linux, intentar conectar a Chrome existente sin cerrarlo
-    if (process.platform === 'linux') {
+    if (process.platform === "linux") {
       const isRunning = await this.checkChromeRunning();
       if (isRunning) {
-        log.info('Chrome is running but debug port not available');
-        log.info('Attempting to connect to existing Chrome...');
+        log.info("Chrome is running but debug port not available");
+        log.info("Attempting to connect to existing Chrome...");
 
         // Intentar conectar directamente
         try {
           const connected = await this.connectToChrome();
           if (connected) {
-            log.success('Successfully connected to existing Chrome!');
+            log.success("Successfully connected to existing Chrome!");
             return true;
           }
         } catch (error) {
-          log.info('Could not connect to existing Chrome, will restart...');
+          log.info("Could not connect to existing Chrome, will restart...");
         }
       } else {
-        log.info('Chrome is not running');
+        log.info("Chrome is not running");
       }
     } else {
       // En macOS, comportamiento original
       const isRunning = await this.checkChromeRunning();
       if (isRunning) {
-        log.info('Chrome is running but debug port not available');
+        log.info("Chrome is running but debug port not available");
       } else {
-        log.info('Chrome is not running');
+        log.info("Chrome is not running");
       }
     }
 
@@ -375,24 +396,24 @@ echo $! > /tmp/chrome.pid
   // ===== MÉTODOS DE SIMPLYCODES =====
 
   async navigateToSimplyCodes() {
-    log.info('|   Navigating to ########...      |');
+    log.info("|   Navigating to ########...      |");
 
-    await this.page.goto('https://simplycodes.com/editor/add/fitzgerald', {
-      waitUntil: 'networkidle2',
-      timeout: 30000
+    await this.page.goto("https://simplycodes.com/editor/add/fitzgerald", {
+      waitUntil: "networkidle2",
+      timeout: 30000,
     });
 
-    log.success('|   Page Loaded Successfully  |');
+    log.success("|   Page Loaded Successfully  |");
     await this.wait(1000);
   }
 
   async fillCouponCode() {
     const codeInput = await this.page.$('input[name="code"]');
     if (!codeInput) {
-      log.error('Code input field not found');
+      log.error("Code input field not found");
       return false;
     }
-    log.success('|   Code Input Field Found    |');
+    log.success("|   Code Input Field Found    |");
     await codeInput.type(this.coupon);
     log.info(`Code entered: ${this.coupon}`);
     await this.wait(2000);
@@ -402,10 +423,10 @@ echo $! > /tmp/chrome.pid
   async clickContinueButton() {
     // Intentar múltiples selectores para el botón Continue
     const selectors = [
-      '#check-code',
+      "#check-code",
       'span[class*="pointer"][id*="check"]',
-      'span.gr8.fs15.pointer',
-      'span:contains("Continue")'
+      "span.gr8.fs15.pointer",
+      'span:contains("Continue")',
     ];
 
     for (const selector of selectors) {
@@ -414,73 +435,73 @@ echo $! > /tmp/chrome.pid
         log.success(`|   Continue Button Found     |`);
         log.success(`|   Selector: ${selector}     |`);
         await button.click();
-        log.info('Continue button clicked');
+        log.info("Continue button clicked");
         await this.wait(3000);
         return true;
       }
     }
 
-    log.error('Continue button not found');
+    log.error("Continue button not found");
     return false;
   }
 
   async selectDiscountType() {
-    log.info('|   Selecting Discount Type...        |');
+    log.info("|   Selecting Discount Type...        |");
 
     // Buscar el select de tipo de descuento
     const typeSelect = await this.page.$('select[name="type"]');
     if (!typeSelect) {
-      log.error('Discount type select not found');
+      log.error("Discount type select not found");
       return false;
     }
 
-    log.success('|   Discount Type Field Found |');
+    log.success("|   Discount Type Field Found |");
 
     // Seleccionar "% Off"
-    await typeSelect.select('type-pct');
-    log.info('Selected: % Off');
+    await typeSelect.select("type-pct");
+    log.info("Selected: % Off");
     await this.wait(1000);
 
     // Verificar que se seleccionó correctamente
-    const selectedValue = await typeSelect.evaluate(el => el.value);
-    if (selectedValue === 'type-pct') {
-      log.success('|   Discount Type Selected     |');
+    const selectedValue = await typeSelect.evaluate((el) => el.value);
+    if (selectedValue === "type-pct") {
+      log.success("|   Discount Type Selected     |");
       return true;
     } else {
-      log.error('Error selecting discount type');
+      log.error("Error selecting discount type");
       return false;
     }
   }
 
   async fillPercentageValue() {
-    log.info('|   Entering Discount Percentage...  |');
+    log.info("|   Entering Discount Percentage...  |");
 
     // Esperar a que aparezca el campo de porcentaje
     await this.wait(1000);
 
     // Buscar el campo de porcentaje
-    const percentageInput = await this.page.$('#type-pct-input');
+    const percentageInput = await this.page.$("#type-pct-input");
     if (!percentageInput) {
-      log.error('Percentage input field not found');
+      log.error("Percentage input field not found");
       return false;
     }
 
-    log.success('|   Percentage Field Found     |');
+    log.success("|   Percentage Field Found     |");
 
     // Limpiar el campo y escribir el valor
     await percentageInput.click();
-    await percentageInput.evaluate(el => el.value = '');
+    await percentageInput.evaluate((el) => (el.value = ""));
     await percentageInput.type(this.percentage);
     log.info(`Percentage entered: ${this.percentage}%`);
     await this.wait(1000);
 
     // Verificar que se escribió correctamente
-    const inputValue = await percentageInput.evaluate(el => el.value);
+    const inputValue = await percentageInput.evaluate((el) => el.value);
     if (inputValue === this.percentage) {
-      log.success('|   Percentage Entered Success |');
+      log.success("|   Percentage Entered Success |");
       return true;
     } else {
-      log.error('Error entering percentage');
+      log.error("Error entering percentage");
       return false;
     }
   }
@@ -498,32 +519,36 @@ echo $! > /tmp/chrome.pid
     log.success('|   "On what?" Field Found    |');
 
     // 1. Seleccionar "Other"
-    await whatSelect.select('what-other');
-    log.info('Selected: Other');
+    await whatSelect.select("what-other");
+    log.info("Selected: Other");
 
     // Esperamos un poco para la animación del input
     await this.wait(500);
 
     // 2. Verificar que se seleccionó correctamente
-    const selectedValue = await whatSelect.evaluate(el => el.value);
+    const selectedValue = await whatSelect.evaluate((el) => el.value);
 
     // Validamos que sea 'what-other'
-    if (selectedValue === 'what-other') {
+    if (selectedValue === "what-other") {
       log.success('|   "On what?" (Other) Selected   |');
 
       // 3. Escribir "NP CE courses" en el input específico
       try {
-        const inputSelector = '#what-desc-input'; // El ID que me diste
+        const inputSelector = "#what-desc-input"; // El ID que me diste
 
         // Esperamos a que el input sea visible (mejor que un wait fijo)
-        await this.page.waitForSelector(inputSelector, { visible: true, timeout: 5000 });
+        await this.page.waitForSelector(inputSelector, {
+          visible: true,
+          timeout: 5000,
+        });
 
         // Escribimos el texto
-        await this.page.type(inputSelector, 'NP CE courses');
+        await this.page.type(inputSelector, "NP CE courses");
         log.info('Typed: "NP CE courses" in #what-desc-input');
-
       } catch (error) {
-        log.error('Error finding or typing in the description input: ' + error.message);
+        log.error(
+          "Error finding or typing in the description input: " + error.message
+        );
         // Dependiendo de tu lógica, podrías querer retornar false aquí si es obligatorio
       }
 
@@ -535,144 +560,154 @@ echo $! > /tmp/chrome.pid
   }
 
   async selectRestrictions() {
-    log.info('|   Selecting Restrictions...         |');
+    log.info("|   Selecting Restrictions...         |");
 
     // Buscar el select de restricciones
     const restrictionsSelect = await this.page.$('select[name="restrictions"]');
     if (!restrictionsSelect) {
-      log.error('Restrictions select not found');
+      log.error("Restrictions select not found");
       return false;
     }
 
-    log.success('|   Restrictions Field Found  |');
+    log.success("|   Restrictions Field Found  |");
 
-    // Seleccionar "New customers only"
-    await restrictionsSelect.select('restrictions-new');
-    log.info('Selected: New customers only');
+    // Seleccionar "Must use store credit card"
+    await restrictionsSelect.select("restrictions-card");
+    log.info("Selected: Must use store credit card");
     await this.wait(1000);
 
     // Verificar que se seleccionó correctamente
-    const selectedValue = await restrictionsSelect.evaluate(el => el.value);
-
-    // Validar contra 'restrictions-new'
-    if (selectedValue === 'restrictions-new') {
-      log.success('|   Restrictions Selected      |');
+    const selectedValue = await restrictionsSelect.evaluate((el) => el.value);
+    if (selectedValue === "restrictions-card") {
+      log.success("|   Restrictions Selected      |");
       return true;
     } else {
-      log.error('Error selecting restrictions');
+      log.error("Error selecting restrictions");
       return false;
     }
   }
-
-  async uploadScreenshot(filePath = './cap-util.png') {
-    log.info('|   Uploading Evidence Image...       |');
+  async uploadScreenshot(filePath = "./cap-util.png") {
+    log.info("|   Uploading Evidence Image...       |");
     const absPath = resolve(filePath);
-    const fileInput = await this.page.$('#screenshot-valid');
+    const fileInput = await this.page.$("#screenshot-valid");
     if (!fileInput) {
-      log.error('File input field not found');
+      log.error("File input field not found");
       return false;
     }
     await fileInput.uploadFile(absPath);
-    log.success('|   Image Upload Success      |');
+    log.success("|   Image Upload Success      |");
     log.success(`|   Path: ${absPath}          |`);
     await this.wait(1000);
     return true;
   }
 
   async clickFinalContinueButton() {
-    log.info('|   Clicking Final Continue Button... |');
-    const continueBtn = await this.page.$('span.btn.btn--grey.btn--s1.preview-title.pointer');
+    log.info("|   Clicking Final Continue Button... |");
+    const continueBtn = await this.page.$(
+      "span.btn.btn--grey.btn--s1.preview-title.pointer"
+    );
     if (!continueBtn) {
-      log.error('Final Continue button not found');
+      log.error("Final Continue button not found");
       return false;
     }
     await continueBtn.click();
-    log.success('|   Final Continue Success    |');
+    log.success("|   Final Continue Success    |");
     await this.wait(2000);
     return true;
   }
 
   async checkFormResponse() {
-    const codeInfoSection = await this.page.$('#code-info');
+    const codeInfoSection = await this.page.$("#code-info");
     if (!codeInfoSection) {
-      log.error('Details form not displayed');
+      log.error("Details form not displayed");
       return false;
     }
 
-    log.success('|   Details Form Displayed    |');
+    log.success("|   Details Form Displayed    |");
 
     // Verificar si el código ya existe
-    const codeExists = await this.page.$('#code-exists');
+    const codeExists = await this.page.$("#code-exists");
     if (codeExists) {
-      const isVisible = await codeExists.evaluate(el => {
-        return window.getComputedStyle(el).display !== 'none';
+      const isVisible = await codeExists.evaluate((el) => {
+        return window.getComputedStyle(el).display !== "none";
       });
 
       if (isVisible) {
-        log.error('This code already exists in SimplyCodes');
+        log.error("This code already exists in SimplyCodes");
         return false;
       }
     }
 
-    log.success('|   New Code, Continuing...   |');
+    log.success("|   New Code, Continuing...   |");
     return true;
   }
 
   async takeScreenshot() {
-    await this.page.screenshot({ path: 'simplycodes-test.png', fullPage: true });
-    log.info('|   Screenshot Saved          |');
-    log.info('|   simplycodes-test.png      |');
+    await this.page.screenshot({
+      path: "simplycodes-test.png",
+      fullPage: true,
+    });
+    log.info("|   Screenshot Saved          |");
+    log.info("|   simplycodes-test.png      |");
   }
 
   async getPageInfo() {
     const pageInfo = await this.page.evaluate(() => ({
       title: document.title,
       url: window.location.href,
-      formFields: Array.from(document.querySelectorAll('input, select, textarea')).map(el => ({
+      formFields: Array.from(
+        document.querySelectorAll("input, select, textarea")
+      ).map((el) => ({
         name: el.name || el.id,
         type: el.type,
-        disabled: el.disabled
-      }))
+        disabled: el.disabled,
+      })),
     }));
 
-    log.info('|   Page Information:         |');
-    log.info('|   Title: ' + pageInfo.title);
-    log.info('|   URL: ' + pageInfo.url);
-    log.info('|   Form Fields: ' + pageInfo.formFields.length);
+    log.info("|   Page Information:         |");
+    log.info("|   Title: " + pageInfo.title);
+    log.info("|   URL: " + pageInfo.url);
+    log.info("|   Form Fields: " + pageInfo.formFields.length);
   }
 
   async clickSubmitButton() {
-    log.info('|   Clicking Final Submit Button...   |');
-    const submitBtn = await this.page.$('#submit');
+    log.info("|   Clicking Final Submit Button...   |");
+    const submitBtn = await this.page.$("#submit");
     if (!submitBtn) {
-      log.error('Submit button not found');
+      log.error("Submit button not found");
       return false;
     }
     // Forzar el display si está oculto
-    await this.page.evaluate(el => { el.style.display = 'inline-block'; }, submitBtn);
+    await this.page.evaluate((el) => {
+      el.style.display = "inline-block";
+    }, submitBtn);
     await submitBtn.click();
-    log.success('|   Submit Button Success     |');
+    log.success("|   Submit Button Success     |");
     await this.wait(2000);
     return true;
   }
 
   async codeExistsVisible() {
-    const codeExists = await this.page.$('#code-exists');
+    const codeExists = await this.page.$("#code-exists");
     if (!codeExists) return false;
-    const isVisible = await codeExists.evaluate(el => window.getComputedStyle(el).display !== 'none' && el.style.display === 'block');
+    const isVisible = await codeExists.evaluate(
+      (el) =>
+        window.getComputedStyle(el).display !== "none" &&
+        el.style.display === "block"
+    );
     return isVisible;
   }
 
   async reloadPage() {
-    log.info('|   Reloading Page...         |');
-    await this.page.reload({ waitUntil: 'networkidle2', timeout: 30000 });
+    log.info("|   Reloading Page...         |");
+    await this.page.reload({ waitUntil: "networkidle2", timeout: 30000 });
     await this.wait(1000);
   }
 
   // ===== MÉTODO PRINCIPAL =====
 
   async checkSystemRequirements() {
-    log.info('|   Checking system requirements...   |');
+    log.info("|   Checking system requirements...   |");
 
     // Verificar que Chrome esté instalado
     try {
@@ -684,30 +719,30 @@ echo $! > /tmp/chrome.pid
         const { stdout } = await execAsync(`${chromeCmd} --version`);
         log.info(`|   Chrome version: ${stdout.trim()} |`);
       } catch (e) {
-        log.error('|   Chrome cannot be executed |');
+        log.error("|   Chrome cannot be executed |");
         return false;
       }
     } catch (error) {
-      log.error('|   Chrome not found on system    |');
-      log.error('|   Please install Google Chrome  |');
+      log.error("|   Chrome not found on system    |");
+      log.error("|   Please install Google Chrome  |");
       return false;
     }
 
     // Verificar permisos de escritura en /tmp
     try {
-      await execAsync('touch /tmp/chrome-debug-test');
-      await execAsync('rm /tmp/chrome-debug-test');
+      await execAsync("touch /tmp/chrome-debug-test");
+      await execAsync("rm /tmp/chrome-debug-test");
     } catch (error) {
-      log.error('|   No write permission in /tmp   |');
+      log.error("|   No write permission in /tmp   |");
       return false;
     }
 
     // Verificar recursos del sistema en Linux
-    if (process.platform === 'linux') {
+    if (process.platform === "linux") {
       try {
         // Verificar memoria disponible
-        const { stdout: memInfo } = await execAsync('free -m');
-        const memLines = memInfo.split('\n');
+        const { stdout: memInfo } = await execAsync("free -m");
+        const memLines = memInfo.split("\n");
         const memLine = memLines[1]; // Línea de memoria total
         const memValues = memLine.split(/\s+/);
         const totalMem = parseInt(memValues[1]);
@@ -717,45 +752,47 @@ echo $! > /tmp/chrome.pid
         log.info(`|   Available RAM: ${availableMem}MB |`);
 
         if (availableMem < 512) {
-          log.error('|   Insufficient memory (< 512MB) |');
-          log.error('|   Chrome may not start properly |');
+          log.error("|   Insufficient memory (< 512MB) |");
+          log.error("|   Chrome may not start properly |");
         }
 
         // Verificar espacio en disco
-        const { stdout: diskInfo } = await execAsync('df /tmp -h');
-        log.info('|   Disk space for /tmp:', diskInfo.split('\n')[1]);
+        const { stdout: diskInfo } = await execAsync("df /tmp -h");
+        log.info("|   Disk space for /tmp:", diskInfo.split("\n")[1]);
 
         // Verificar DISPLAY
         if (!process.env.DISPLAY) {
-          log.error('|   DISPLAY environment not set |');
-          log.error('|   Chrome may not start properly |');
+          log.error("|   DISPLAY environment not set |");
+          log.error("|   Chrome may not start properly |");
         } else {
           log.info(`|   DISPLAY: ${process.env.DISPLAY} |`);
         }
-
       } catch (error) {
-        log.info('|   Could not check system resources |');
+        log.info("|   Could not check system resources |");
       }
     }
 
-    log.success('|   System requirements OK      |');
+    log.success("|   System requirements OK      |");
     return true;
   }
 
   async testPage() {
-    log.info('|   Checking Chrome...                |');
+    log.info("|   Checking Chrome...                |");
 
     // Verificar requisitos del sistema
-    if (!await this.checkSystemRequirements()) {
-      log.error('|   System requirements failed |');
-      log.error('|   Aborting...                |');
+    if (!(await this.checkSystemRequirements())) {
+      log.error("|   System requirements failed |");
+      log.error("|   Aborting...                |");
       return;
     }
 
     // Inicializar Chrome
-    if (!await this.ensureChromeRunning() || !await this.connectToChrome()) {
-      log.error('|   Chrome Initialization Failed |');
-      log.error('|   Aborting...                |');
+    if (
+      !(await this.ensureChromeRunning()) ||
+      !(await this.connectToChrome())
+    ) {
+      log.error("|   Chrome Initialization Failed |");
+      log.error("|   Aborting...                |");
       return;
     }
 
@@ -775,7 +812,7 @@ echo $! > /tmp/chrome.pid
           await this.wait(2000);
           if (await this.codeExistsVisible()) {
             this.retryCount++;
-            log.error('|   Code Already Exists       |');
+            log.error("|   Code Already Exists       |");
             log.error(`|   Retrying... (${this.retryCount}) |`);
             await this.wait(60000);
             await this.reloadPage();
@@ -791,8 +828,8 @@ echo $! > /tmp/chrome.pid
                     if (await this.uploadScreenshot()) {
                       if (await this.clickFinalContinueButton()) {
                         await this.clickSubmitButton();
-                        log.success('|   Coupon Upload Success      |');
-                        log.success('|   Waiting 1 minute...        |');
+                        log.success("|   Coupon Upload Success      |");
+                        log.success("|   Waiting 1 minute...        |");
                         await this.wait(60000);
 
                         // Verificar si el cupón existe después de subirlo
@@ -803,8 +840,8 @@ echo $! > /tmp/chrome.pid
                         await this.wait(2000);
 
                         if (await this.codeExistsVisible()) {
-                          log.error('|   Still Exists After Upload |');
-                          log.error('|   Retrying...               |');
+                          log.error("|   Still Exists After Upload |");
+                          log.error("|   Retrying...               |");
                           this.retryCount++;
                           await this.wait(60000);
                           await this.reloadPage();
@@ -815,7 +852,9 @@ echo $! > /tmp/chrome.pid
                           this.percentageIncrementCount++;
 
                           log.success(`|   Coupon Upload Success!     |`);
-                          log.success(`|   (${this.successfulSubmissions} times)        |`);
+                          log.success(
+                            `|   (${this.successfulSubmissions} times)        |`
+                          );
 
                           // Incrementar porcentaje cada 5 subidas exitosas
                           if (this.percentageIncrementCount >= 5) {
@@ -824,7 +863,9 @@ echo $! > /tmp/chrome.pid
                             if (this.percentage > 35) {
                               this.percentage = this.basePercentage; // Volver al porcentaje base
                             }
-                            log.info(`|   New Discount: ${this.percentage}%        |`);
+                            log.info(
+                              `|   New Discount: ${this.percentage}%        |`
+                            );
                           }
 
                           await this.wait(60000);
@@ -845,9 +886,8 @@ echo $! > /tmp/chrome.pid
       // Capturar información
       await this.takeScreenshot();
       await this.getPageInfo();
-
     } catch (error) {
-      log.error('|   Page Test Error           |');
+      log.error("|   Page Test Error           |");
       log.error(`|   ${error.message}          |`);
     }
   }
@@ -855,25 +895,27 @@ echo $! > /tmp/chrome.pid
   // ===== UTILIDADES =====
 
   async wait(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async close() {
     if (this.browser) {
-      log.info('|   Disconnecting Browser...   |');
+      log.info("|   Disconnecting Browser...   |");
       await this.browser.disconnect();
     }
 
     // En Linux, no cerrar Chrome al finalizar para mantener la instancia
-    if (process.platform === 'linux' && this.chromeProcess) {
-      log.info('|   Keeping Chrome running...  |');
+    if (process.platform === "linux" && this.chromeProcess) {
+      log.info("|   Keeping Chrome running...  |");
       // No matar el proceso, solo desconectarlo
       this.chromeProcess = null;
     }
 
     // Limpiar archivos temporales
     try {
-      await execAsync('rm -f /tmp/launch-chrome.sh /tmp/chrome.pid /tmp/chrome.log 2>/dev/null || true');
+      await execAsync(
+        "rm -f /tmp/launch-chrome.sh /tmp/chrome.pid /tmp/chrome.log 2>/dev/null || true"
+      );
     } catch (e) {
       // Ignorar errores de limpieza
     }
@@ -884,16 +926,16 @@ echo $! > /tmp/chrome.pid
 let globalTester = null;
 
 // Manejador de señales para cerrar Chrome correctamente
-process.on('SIGINT', async () => {
-  log.info('|   Received SIGINT, cleaning up... |');
+process.on("SIGINT", async () => {
+  log.info("|   Received SIGINT, cleaning up... |");
   if (globalTester) {
     await globalTester.close();
   }
   process.exit(0);
 });
 
-process.on('SIGTERM', async () => {
-  log.info('|   Received SIGTERM, cleaning up... |');
+process.on("SIGTERM", async () => {
+  log.info("|   Received SIGTERM, cleaning up... |");
   if (globalTester) {
     await globalTester.close();
   }
@@ -903,9 +945,9 @@ process.on('SIGTERM', async () => {
 // Ejecutar el test
 async function runTest() {
   console.clear();
-  log.info('|   #################################   |');
-  log.info('|   #  BOT DE CUPONES - SIMPLYCODES  #   |');
-  log.info('|   #################################   |');
+  log.info("|   #################################   |");
+  log.info("|   #  BOT DE CUPONES - SIMPLYCODES  #   |");
+  log.info("|   #################################   |");
   let coupon = process.env.COUPON;
   let percentage = process.env.PERCENTAGE;
   let answers;
@@ -914,26 +956,26 @@ async function runTest() {
   } else {
     answers = await inquirer.prompt([
       {
-        type: 'input',
-        name: 'coupon',
-        message: 'Enter coupon code to upload:',
-        default: '',
-        validate: v => v.trim() !== ''
+        type: "input",
+        name: "coupon",
+        message: "Enter coupon code to upload:",
+        default: "",
+        validate: (v) => v.trim() !== "",
       },
       {
-        type: 'input',
-        name: 'percentage',
-        message: 'Enter discount percentage (numbers only):',
-        default: '25',
-        validate: v => /^\\d+$/.test(v)
-      }
+        type: "input",
+        name: "percentage",
+        message: "Enter discount percentage (numbers only):",
+        default: "25",
+        validate: (v) => /^\\d+$/.test(v),
+      },
     ]);
   }
   globalTester = new SimplyCodesTester(answers.coupon, answers.percentage);
   try {
     await globalTester.testPage();
   } catch (error) {
-    log.error('|   Test Error                |');
+    log.error("|   Test Error                |");
     log.error(`|   ${error.message}          |`);
   } finally {
     await globalTester.close();
