@@ -377,7 +377,7 @@ echo $! > /tmp/chrome.pid
   async navigateToSimplyCodes() {
     log.info('|   Navigating to ########...      |');
 
-    await this.page.goto('https://simplycodes.com/editor/add/draftkings', {
+    await this.page.goto('https://simplycodes.com/editor/add/fitzgerald', {
       waitUntil: 'networkidle2',
       timeout: 30000
     });
