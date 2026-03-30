@@ -1,4 +1,3 @@
-// tui-simplycodes.js
 import blessed from 'blessed';
 import { fork } from 'child_process';
 import path from 'path';
@@ -11,7 +10,7 @@ const __dirname = path.dirname(__filename);
 // Crear pantalla principal
 const screen = blessed.screen({
   smartCSR: true,
-  title: 'Bot de Cupones - SimplyCodes',
+  title: 'Bot de Cupones - SimplyCodes (Stealth Mode)',
   style: { bg: 'black' }
 });
 
@@ -128,7 +127,7 @@ const logBox = blessed.log({
   left: 'center',
   width: '90%',
   height: '60%',
-  label: 'Logs',
+  label: 'Logs de Actividad',
   border: { type: 'line' },
   style: { fg: 'white', bg: 'black', border: { fg: 'white' } },
   scrollable: true,
@@ -158,69 +157,51 @@ let running = false;
 let logCleanupInterval = null;
 let lastError = '';
 
-// Función para limpiar secuencias ANSI
+// Función para limpiar secuencias ANSI (solo si es necesario, pero mantenemos colores)
 function limpiarAnsi(str) {
   return str.replace(/[\u001b\u009b][[\]()#;?]*(?:[0-9]{1,4}(?:;[0-9]{0,4})*)?[0-9A-ORZcf-nqry=><]/g, '');
 }
 
-// Función para limpiar logs antiguos
 function limpiarLogsAntiguos() {
-  const maxLines = 100; // Mantener solo las últimas 100 líneas
+  const maxLines = 100;
   const lines = logBox.getLines();
   if (lines.length > maxLines) {
-    // Limpiar el logBox y agregar solo las últimas líneas
     logBox.setContent('');
     const linesToKeep = lines.slice(-maxLines);
-    linesToKeep.forEach(line => {
-      logBox.log(line.content);
-    });
-    logBox.log('--- Logs limpiados automáticamente ---');
+    linesToKeep.forEach(line => { logBox.log(line.content); });
+    logBox.log('--- Logs optimizados ---');
     screen.render();
   }
 }
 
-// Iniciar limpieza automática cada 10 minutos
 function iniciarLimpiezaAutomatica() {
-  if (logCleanupInterval) {
-    clearInterval(logCleanupInterval);
-  }
-  logCleanupInterval = setInterval(limpiarLogsAntiguos, 10 * 60 * 1000); // 10 minutos
+  if (logCleanupInterval) clearInterval(logCleanupInterval);
+  logCleanupInterval = setInterval(limpiarLogsAntiguos, 10 * 60 * 1000);
 }
 
 function bloquearFormulario(bloquear) {
   couponInput.readOnly = bloquear;
   percentInput.readOnly = bloquear;
-  startButton.setContent(bloquear ? 'En ejecución...' : 'Iniciar');
-  if (bloquear) {
-    startButton.style.bg = 'gray';
-  } else {
-    startButton.style.bg = 'green';
-  }
+  startButton.setContent(bloquear ? 'Corriendo...' : 'Iniciar');
+  startButton.style.bg = bloquear ? 'gray' : 'green';
   screen.render();
 }
 
 function chromeDebugAvailable() {
   try {
     const result = execSync('curl -s http://localhost:9222/json/version', { encoding: 'utf8' });
-    return result.includes('Chrome');
-  } catch {
-    return false;
-  }
+    return result.includes('Browser');
+  } catch { return false; }
 }
 
 function isChromeRunning() {
   try {
-    if (process.platform === 'darwin') {
-      const result = execSync('ps aux | grep -i "Google Chrome" | grep -v grep', { encoding: 'utf8' });
-      return result.trim().length > 0;
-    } else if (process.platform === 'linux') {
-      const result = execSync('ps aux | grep -E "(chrome|google-chrome|chromium)" | grep -v grep', { encoding: 'utf8' });
-      return result.trim().length > 0;
-    }
-    return false;
-  } catch {
-    return false;
-  }
+    const cmd = process.platform === 'linux'
+      ? 'ps aux | grep -E "(chrome|google-chrome|chromium)" | grep -v grep'
+      : 'ps aux | grep -i "Google Chrome" | grep -v grep';
+    const result = execSync(cmd, { encoding: 'utf8' });
+    return result.trim().length > 0;
+  } catch { return false; }
 }
 
 function iniciarBot(cupon, porcentaje) {
@@ -228,47 +209,44 @@ function iniciarBot(cupon, porcentaje) {
   running = true;
   bloquearFormulario(true);
   logBox.log('----------------------------------------');
+
   if (chromeDebugAvailable()) {
-    logBox.log('Chrome ya está corriendo en modo debug (puerto 9222 disponible). El bot usará la instancia existente y no relanzará Chrome.');
-  } else if (isChromeRunning()) {
-    logBox.log('Chrome está ejecutándose pero sin puerto debug. En Linux, el bot intentará conectar sin cerrar Chrome.');
+    logBox.log('Usando instancia de Chrome activa (Puerto 9222).');
   } else {
-    logBox.log('Iniciando bot real...');
+    logBox.log('Iniciando Bot en Modo Sigilo para Linux...');
   }
+
   lastError = '';
-  // Ejecutar el bot como proceso hijo usando spawn y capturar todos los mensajes
+  // CAMBIO CLAVE: FORCE_COLOR: 1 para ver los colores del bot en la TUI
   child = spawn('node', [path.resolve(__dirname, 'test-simplycodes.js')], {
-    env: { ...process.env, COUPON: cupon, PERCENTAGE: porcentaje, FORCE_COLOR: 0 },
+    env: { ...process.env, COUPON: cupon, PERCENTAGE: porcentaje, FORCE_COLOR: 1 },
     stdio: ['inherit', 'pipe', 'pipe']
   });
 
   child.stdout.on('data', (data) => {
-    const msg = limpiarAnsi(data.toString().replace(/\n$/, ''));
-    logBox.log(msg);
+    logBox.log(data.toString().trim());
     screen.render();
   });
 
   child.stderr.on('data', (data) => {
-    const errMsg = limpiarAnsi(data.toString().replace(/\n$/, ''));
+    const errMsg = data.toString().trim();
     lastError = errMsg;
     logBox.log('[ERROR] ' + errMsg);
     screen.render();
   });
+
   child.on('exit', (code) => {
     if (code !== 0) {
-      logBox.log('Bot finalizado con error. Código de salida: ' + code);
+      logBox.log('Bot se detuvo. Código: ' + code);
       if (lastError.includes('Chrome') || lastError.includes('debug')) {
-        logBox.log('--- Sugerencias para solucionar el error de Chrome ---');
-        logBox.log('1. Verifica que Google Chrome o Chromium esté instalado.');
-        logBox.log('2. Prueba lanzar manualmente:');
-        logBox.log('   /usr/bin/google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug --no-sandbox --disable-gpu');
-        logBox.log('3. Si usas una ruta personalizada, lanza el TUI así:');
-        logBox.log('   CHROME_PATH=/ruta/a/chrome node tui-simplycodes.js');
-        logBox.log('4. Verifica el puerto con: curl http://localhost:9222/json/version');
-        logBox.log('5. Si usas Chromium, prueba: CHROME_PATH=chromium node tui-simplycodes.js');
+        logBox.log('--- SOLUCIÓN DE CONEXIÓN ---');
+        logBox.log('1. Cierra todas las ventanas de Chrome.');
+        logBox.log('2. Si el bot no abre Chrome solo, lánzalo así:');
+        logBox.log('   google-chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug');
+        logBox.log('   (SIN las flags --no-sandbox ni --disable-gpu)');
       }
     } else {
-      logBox.log('Bot finalizado. Código de salida: ' + code);
+      logBox.log('Ciclo completado exitosamente.');
     }
     running = false;
     bloquearFormulario(false);
@@ -278,39 +256,26 @@ function iniciarBot(cupon, porcentaje) {
 
 // Eventos
 startButton.on('press', () => {
-  if (running) return;
-  const cupon = couponInput.getValue().trim() || '';
+  const cupon = couponInput.getValue().trim();
   const porcentaje = percentInput.getValue().trim() || '25';
-  iniciarBot(cupon, porcentaje);
+  if (cupon) iniciarBot(cupon, porcentaje);
 });
 
 screen.key(['f5'], () => {
-  if (running) return;
-  const cupon = couponInput.getValue().trim() || '';
+  const cupon = couponInput.getValue().trim();
   const porcentaje = percentInput.getValue().trim() || '25';
-  iniciarBot(cupon, porcentaje);
+  if (cupon) iniciarBot(cupon, porcentaje);
 });
 
-couponInput.key('enter', () => {
-  percentInput.focus();
-});
-percentInput.key('enter', () => {
-  startButton.focus();
-});
+couponInput.key('enter', () => percentInput.focus());
+percentInput.key('enter', () => startButton.focus());
 
 screen.key(['f10', 'q', 'C-c'], () => {
-  if (child && running) {
-    child.kill('SIGINT');
-    running = false;
-  }
-  if (logCleanupInterval) {
-    clearInterval(logCleanupInterval);
-  }
+  if (child) child.kill('SIGINT');
+  if (logCleanupInterval) clearInterval(logCleanupInterval);
   return process.exit(0);
 });
 
-// Iniciar limpieza automática al arrancar
 iniciarLimpiezaAutomatica();
-
 couponInput.focus();
 screen.render();
